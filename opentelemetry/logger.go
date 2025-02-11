@@ -5,7 +5,15 @@ import (
 	"context"
 	"io"
 	"net/http"
+
+	t "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
+
+type postgresLog struct {
+	query     string
+	queryArgs []any
+}
 
 type httpLog struct {
 	method      string
@@ -40,10 +48,18 @@ func NewHttpLog(
 	}
 }
 
+func NewPostgresLog(query string, queryArgs ...any) *postgresLog {
+	return &postgresLog{
+		query:     query,
+		queryArgs: queryArgs,
+	}
+}
+
 type LoggerConfig struct {
-	context context.Context
-	err     error
-	httpLog *httpLog
+	context     context.Context
+	err         error
+	httpLog     *httpLog
+	postgresLog *postgresLog
 }
 
 type LoggerConfigOption func(d *LoggerConfig)
@@ -51,6 +67,12 @@ type LoggerConfigOption func(d *LoggerConfig)
 func WithHttpLog(value *httpLog) LoggerConfigOption {
 	return func(c *LoggerConfig) {
 		c.httpLog = value
+	}
+}
+
+func WithPostgresLog(value *postgresLog) LoggerConfigOption {
+	return func(c *LoggerConfig) {
+		c.postgresLog = value
 	}
 }
 
@@ -68,8 +90,15 @@ func ErrorLog(
 		opt(loggerConfig)
 	}
 
+	span := trace.SpanFromContext(ctx)
+	traceID := span.SpanContext().TraceID().String()
+	spanID := span.SpanContext().SpanID().String()
+
 	if loggerConfig.httpLog != nil {
 		openTelemetryConfig.logger.ErrorContext(ctx, message,
+			"traceID", traceID,
+			"spanID", spanID,
+			"contextName", span.(t.ReadOnlySpan).Name(),
 			"error", err,
 			"method", loggerConfig.httpLog.method,
 			"path", loggerConfig.httpLog.path,
@@ -81,11 +110,16 @@ func ErrorLog(
 			"remoteAddr", loggerConfig.httpLog.remoteAddr,
 			"userAgent", loggerConfig.httpLog.userAgent,
 		)
-
-		return
 	}
 
-	openTelemetryConfig.logger.ErrorContext(ctx, message,
-		"error", err,
-	)
+	if loggerConfig.postgresLog != nil {
+		openTelemetryConfig.logger.ErrorContext(ctx, message,
+			"traceID", traceID,
+			"spanID", spanID,
+			"contextName", span.(t.ReadOnlySpan).Name(),
+			"error", err,
+			"query", loggerConfig.postgresLog.query,
+			"queryArgs", loggerConfig.postgresLog.queryArgs,
+		)
+	}
 }
