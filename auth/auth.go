@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"encoding/base64"
 	"net/http"
 	"strings"
 	"time"
@@ -56,9 +57,9 @@ func GetSignToken(claims CustomClaims, expireIn time.Duration, secretKey string)
 func (a *Authenticator) AuthMiddleware(values ...ContextValue) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			bearToken := request.Header.Get("Authorization")
+			headerToken := request.Header.Get("Authorization")
 
-			if claims, isValid := a.verifyToken(bearToken); isValid {
+			if claims, isValid := a.verifyToken(headerToken); isValid {
 				ctx := request.Context()
 				fields := claims.Data
 
@@ -82,8 +83,29 @@ func (a *Authenticator) AuthMiddleware(values ...ContextValue) func(next http.Ha
 // verifyToken verifica o token JWT usando as claims encapsuladas dentro do pacote
 func (a *Authenticator) verifyToken(bearerToken string) (*internalClaims, bool) {
 	claims := &internalClaims{Data: a.claims.GetFields()}
+	tokenType, headerToken := extractToken(bearerToken)
 
-	token, err := jwt.ParseWithClaims(extractToken(bearerToken), claims, func(token *jwt.Token) (interface{}, error) {
+	if headerToken == "" {
+		return nil, false
+	}
+
+	if tokenType == "Basic" {
+		decoded, err := base64.StdEncoding.DecodeString(headerToken)
+		if err != nil {
+			return nil, false
+		}
+
+		parts := strings.Split(string(decoded), ":")
+		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+			return nil, false
+		}
+
+		claims.Data["client_id"] = parts[0]
+		claims.Data["secret"] = parts[1]
+		return claims, true
+	}
+
+	token, err := jwt.ParseWithClaims(headerToken, claims, func(token *jwt.Token) (interface{}, error) {
 		return a.secretKey, nil
 	})
 
@@ -99,12 +121,12 @@ func (a *Authenticator) verifyToken(bearerToken string) (*internalClaims, bool) 
 }
 
 // extractToken extrai o token do cabeçalho Authorization
-func extractToken(bearerToken string) string {
+func extractToken(bearerToken string) (string, string) {
 	strArr := strings.Split(bearerToken, " ")
 	if len(strArr) == 2 {
-		return strArr[1]
+		return strArr[0], strArr[1]
 	}
-	return ""
+	return "", ""
 }
 
 // GetStringFromContext busca um valor string do contexto
@@ -118,11 +140,20 @@ func GetStringFromContext(ctx context.Context, value ContextValue) string {
 
 // GetIntFromContext busca um valor int do contexto
 func GetInt64FromContext(ctx context.Context, value ContextValue) int64 {
-	v, ok := ctx.Value(value).(int64)
-	if !ok {
+	v := ctx.Value(value)
+	switch val := v.(type) {
+	case int64:
+		return val
+	case int:
+		return int64(val)
+	case float64:
+		if float64(int64(val)) == val {
+			return int64(val)
+		}
+		return 0
+	default:
 		return 0
 	}
-	return v
 }
 
 // GetBoolFromContext busca um valor bool do contexto
@@ -135,7 +166,7 @@ func GetBoolFromContext(ctx context.Context, value ContextValue) bool {
 }
 
 // GetFloatFromContext busca um valor float64 do contexto
-func GetFloatFromContext(ctx context.Context, value ContextValue) float64 {
+func GetFloat64FromContext(ctx context.Context, value ContextValue) float64 {
 	v, ok := ctx.Value(value).(float64)
 	if !ok {
 		return 0.0
