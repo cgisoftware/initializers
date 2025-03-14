@@ -16,7 +16,7 @@ type pacificHttpRepository struct{}
 
 // Send implements domain.PacificHttpRepository.
 func (repository *pacificHttpRepository) Send(ctx context.Context, url string, input PacificInput) ([]byte, *PacificError) {
-	ctx, cancel := context.WithTimeout(ctx, time.Second*20)
+	ctx, cancel := context.WithTimeout(ctx, time.Minute)
 	defer cancel()
 
 	ctx, span := opentelemetry.StartTracing(ctx, "paficicHttpRepository.Send")
