@@ -30,7 +30,7 @@ func HttpErrorResponse(w http.ResponseWriter, err error, messages ...string) {
 	if len(messages) > 0 {
 		for i, msg := range messages {
 			errorMessage += msg
-			if i != len(msg)-1 {
+			if i != len(messages)-1 {
 				errorMessage += "\n"
 			}
 		}
