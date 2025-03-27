@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v4"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 // ContextValue representa uma chave usada no contexto HTTP
@@ -15,12 +15,12 @@ type ContextValue string
 
 // CustomClaims define a interface para que o sistema forneça seus próprios dados
 type CustomClaims interface {
-	GetFields() map[ContextValue]interface{} // Retorna os campos como um mapa
+	GetFields() map[ContextValue]any // Retorna os campos como um mapa
 }
 
 // internalClaims encapsula os dados do sistema e adiciona jwt.RegisteredClaims
 type internalClaims struct {
-	Data map[ContextValue]interface{} `json:"data"`
+	Data map[ContextValue]any `json:"data"`
 	jwt.RegisteredClaims
 }
 
@@ -105,7 +105,7 @@ func (a *Authenticator) verifyToken(bearerToken string) (*internalClaims, bool) 
 		return claims, true
 	}
 
-	token, err := jwt.ParseWithClaims(headerToken, claims, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(headerToken, claims, func(token *jwt.Token) (any, error) {
 		return a.secretKey, nil
 	})
 
@@ -174,7 +174,7 @@ func GetFloat64FromContext(ctx context.Context, value ContextValue) float64 {
 	return v
 }
 
-// GetInterfaceFromContext busca um valor genérico (interface{}) do contexto
-func GetInterfaceFromContext(ctx context.Context, value ContextValue) interface{} {
+// GetInterfaceFromContext busca um valor genérico (any) do contexto
+func GetInterfaceFromContext(ctx context.Context, value ContextValue) any {
 	return ctx.Value(value)
 }
