@@ -21,7 +21,15 @@ func (e errorAPIError) HttpErrorResponse(w http.ResponseWriter) {
 	http.Error(w, payload, e.status)
 }
 
-func FormatHttpErrorResponse(w http.ResponseWriter, err *errorAPIError) {
+func HttpErrorResponse(w http.ResponseWriter, err *errorAPIError) {
+	if err == nil {
+		return
+	}
+
+	if !isErrorAPIError(err) {
+		err = ErrInternalServer
+	}
+
 	err.HttpErrorResponse(w)
 }
 
@@ -36,7 +44,7 @@ var (
 	ErrCodMenuKeyNotFound  = &errorAPIError{status: http.StatusBadRequest, err: errors.New("é necessário informar a chave do cliente e o codigo do menu")}
 )
 
-func IsErrorAPIError(err error) bool {
-	_, ok := err.(*errorAPIError)
+func isErrorAPIError(err error) bool {
+	err, ok := err.(*errorAPIError)
 	return ok
 }
