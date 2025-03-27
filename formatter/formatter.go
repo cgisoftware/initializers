@@ -21,11 +21,10 @@ type HttpResponse struct {
 
 func (e errorAPIError) HttpErrorResponse(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
-	payload, _ := json.Marshal(HttpResponse{
+	w.WriteHeader(e.status)
+	json.NewEncoder(w).Encode(HttpResponse{
 		Message: e.err.Error(),
 	})
-
-	http.Error(w, string(payload), e.status)
 }
 
 func HttpErrorResponse(w http.ResponseWriter, err error, messages ...string) {
