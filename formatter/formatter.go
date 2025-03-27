@@ -21,7 +21,7 @@ func (e errorAPIError) HttpErrorResponse(w http.ResponseWriter) {
 	http.Error(w, payload, e.status)
 }
 
-func HttpErrorResponse(w http.ResponseWriter, err *errorAPIError) {
+func HttpErrorResponse(w http.ResponseWriter, err error) {
 	if err == nil {
 		return
 	}
@@ -30,7 +30,7 @@ func HttpErrorResponse(w http.ResponseWriter, err *errorAPIError) {
 		err = ErrInternalServer
 	}
 
-	err.HttpErrorResponse(w)
+	err.(*errorAPIError).HttpErrorResponse(w)
 }
 
 var (
@@ -45,6 +45,6 @@ var (
 )
 
 func isErrorAPIError(err error) bool {
-	err, ok := err.(*errorAPIError)
+	_, ok := err.(*errorAPIError)
 	return ok
 }
