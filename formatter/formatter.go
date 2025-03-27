@@ -1,8 +1,8 @@
 package formatter
 
 import (
+	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 )
 
@@ -15,10 +15,17 @@ func (e errorAPIError) Error() string {
 	return e.err.Error()
 }
 
+type HttpResponse struct {
+	Message string `json:"message"`
+}
+
 func (e errorAPIError) HttpErrorResponse(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
-	payload := fmt.Sprintf(`{"message": "%s"}`, e.err)
-	http.Error(w, payload, e.status)
+	payload, _ := json.Marshal(HttpResponse{
+		Message: e.err.Error(),
+	})
+
+	http.Error(w, string(payload), e.status)
 }
 
 func HttpErrorResponse(w http.ResponseWriter, err error, messages ...string) {
