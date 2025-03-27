@@ -21,13 +21,19 @@ func (e errorAPIError) HttpErrorResponse(w http.ResponseWriter) {
 	http.Error(w, payload, e.status)
 }
 
-func HttpErrorResponse(w http.ResponseWriter, err error) {
+func HttpErrorResponse(w http.ResponseWriter, err error, message *string) {
 	if err == nil {
 		return
 	}
 
 	if !isErrorAPIError(err) {
-		err = ErrInternalServer
+		if message != nil {
+			err = &errorAPIError{status: http.StatusInternalServerError, err: errors.New(*message)}
+		}
+	}
+
+	if message != nil {
+		err = &errorAPIError{status: err.(*errorAPIError).status, err: errors.New(*message)}
 	}
 
 	err.(*errorAPIError).HttpErrorResponse(w)
