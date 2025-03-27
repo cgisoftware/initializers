@@ -15,10 +15,14 @@ func (e errorAPIError) Error() string {
 	return e.err.Error()
 }
 
-func (e errorAPIError) HttpError(w http.ResponseWriter) {
+func (e errorAPIError) HttpErrorResponse(w http.ResponseWriter) {
 	w.Header().Set("Content-Type", "application/json")
 	payload := fmt.Sprintf(`{"message": "%s"}`, e.err)
 	http.Error(w, payload, e.status)
+}
+
+func FormatHttpErrorResponse(w http.ResponseWriter, err *errorAPIError) {
+	err.HttpErrorResponse(w)
 }
 
 var (
