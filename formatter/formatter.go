@@ -45,6 +45,8 @@ func HttpErrorResponse(w http.ResponseWriter, err error, messages ...string) {
 	if !isErrorAPIError(err) {
 		if errorMessage != "" {
 			err = &errorAPIError{status: http.StatusInternalServerError, err: errors.New(errorMessage)}
+		} else {
+			err = &errorAPIError{status: http.StatusInternalServerError, err: err}
 		}
 	}
 
@@ -57,7 +59,7 @@ func HttpErrorResponse(w http.ResponseWriter, err error, messages ...string) {
 
 var (
 	ErrAuth                = &errorAPIError{status: http.StatusUnauthorized, err: errors.New("não autorizado")}
-	ErrNotFound            = &errorAPIError{status: http.StatusNotFound, err: errors.New("não existe")}
+	ErrNotFound            = &errorAPIError{status: http.StatusNotFound, err: errors.New("recurso não existe")}
 	ErrDuplicate           = &errorAPIError{status: http.StatusBadRequest, err: errors.New("duplicado")}
 	ErrInternalServer      = &errorAPIError{status: http.StatusInternalServerError, err: errors.New("erro no servidor")}
 	ErrBadRequest          = &errorAPIError{status: http.StatusBadRequest, err: errors.New("preencha os campos")}
