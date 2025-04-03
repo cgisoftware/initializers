@@ -57,6 +57,10 @@ func HttpErrorResponse(w http.ResponseWriter, err error, messages ...string) {
 	err.(*errorAPIError).HttpErrorResponse(w)
 }
 
+func WrapError(err *errorAPIError, message string) error {
+	return &errorAPIError{status: err.status, err: errors.New(message)}
+}
+
 var (
 	ErrAuth                = &errorAPIError{status: http.StatusUnauthorized, err: errors.New("não autorizado")}
 	ErrNotFound            = &errorAPIError{status: http.StatusNotFound, err: errors.New("recurso não existe")}
