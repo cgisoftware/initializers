@@ -59,6 +59,14 @@ func (a *Authenticator) AuthMiddleware(values ...ContextValue) func(next http.Ha
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			headerToken := request.Header.Get("Authorization")
 
+			cookies := request.Cookies()
+			for _, cookie := range cookies {
+				if cookie.Name == "CIMSSESSIONTOKEN" {
+					headerToken = cookie.Value
+					break
+				}
+			}
+
 			if claims, isValid := a.verifyToken(headerToken); isValid {
 				ctx := request.Context()
 				fields := claims.Data
@@ -126,7 +134,7 @@ func extractToken(bearerToken string) (string, string) {
 	if len(strArr) == 2 {
 		return strArr[0], strArr[1]
 	}
-	return "", ""
+	return "", bearerToken
 }
 
 // GetStringFromContext busca um valor string do contexto
