@@ -1,4 +1,4 @@
-package adapter
+package crypt
 
 import (
 	"crypto/rsa"
