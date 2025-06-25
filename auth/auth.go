@@ -53,8 +53,21 @@ func GetSignToken(claims CustomClaims, expireIn time.Duration, secretKey string)
 	return tokenString
 }
 
+// CryptService interface para descriptografia (evita dependência circular)
+type CryptService interface {
+	DecryptWithMasterKeySimple(encryptedData string) (string, error)
+	DecryptData(encryptedData string) (string, error)
+}
+
 // AuthMiddleware cria um middleware que verifica a autenticação
+// Se cryptService for fornecido, tentará descriptografar os valores antes de adicioná-los ao contexto
 func (a *Authenticator) AuthMiddleware(values ...ContextValue) func(next http.Handler) http.Handler {
+	return a.AuthMiddlewareWithCrypt(nil, values...)
+}
+
+// AuthMiddlewareWithCrypt cria um middleware que verifica a autenticação e opcionalmente descriptografa valores
+// Se cryptService for fornecido, tentará descriptografar os valores antes de adicioná-los ao contexto
+func (a *Authenticator) AuthMiddlewareWithCrypt(cryptService CryptService, values ...ContextValue) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
 			headerToken := request.Header.Get("Authorization")
@@ -74,6 +87,22 @@ func (a *Authenticator) AuthMiddleware(values ...ContextValue) func(next http.Ha
 				// Itera sobre os valores passados e adiciona no contexto
 				for _, value := range values {
 					if field, exists := fields[value]; exists {
+						// Tenta descriptografar o valor se cryptService foi fornecido
+						if cryptService != nil {
+							if fieldStr, ok := field.(string); ok && fieldStr != "" {
+								// Tenta descriptografar usando AES primeiro
+								if decrypted, err := cryptService.DecryptWithMasterKeySimple(fieldStr); err == nil {
+									ctx = context.WithValue(ctx, value, decrypted)
+									continue
+								}
+								// Se falhar, tenta descriptografia híbrida
+								if decrypted, err := cryptService.DecryptData(fieldStr); err == nil {
+									ctx = context.WithValue(ctx, value, decrypted)
+									continue
+								}
+							}
+						}
+						// Se não conseguir descriptografar ou cryptService não foi fornecido, usa o valor original
 						ctx = context.WithValue(ctx, value, field)
 					}
 				}
