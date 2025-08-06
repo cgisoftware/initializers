@@ -57,6 +57,42 @@ func NewPacificInput(usuario, senha, programa, metodo, valor string) PacificInpu
 	return input
 }
 
+func NewPacificInputColab(usuario, senha, programa, metodo, valor, senhaColab string) PacificInput {
+	input := PacificInput{
+		UID:  usuario,
+		PWD:  senha,
+		PtoP: programa,
+		Params: []Param{
+			{
+				Parametro: "pcValidaSenha",
+				DataType:  "char",
+				ParamType: "input",
+				Valor:     senhaColab,
+			},
+			{
+				Parametro: "pcMetodo",
+				DataType:  "char",
+				ParamType: "input",
+				Valor:     metodo,
+			},
+			{
+				Parametro: "pcParametros",
+				DataType:  "longchar",
+				ParamType: "input",
+				Valor:     string(valor),
+			},
+			{
+				Parametro: "pcRetorno",
+				DataType:  "longchar",
+				ParamType: "output",
+				Valor:     "",
+			},
+		},
+	}
+
+	return input
+}
+
 type LogErroApp struct {
 	LogErroApp []LogErroAppElement `json:"logErroApp"`
 }
