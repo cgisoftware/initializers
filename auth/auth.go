@@ -55,8 +55,8 @@ func GetSignToken(claims CustomClaims, expireIn time.Duration, secretKey string)
 
 // CryptService interface para descriptografia (evita dependência circular)
 type CryptService interface {
-	DecryptWithMasterKeySimple(encryptedData string) (string, error)
-	DecryptData(encryptedData string) (string, error)
+	DecryptWithMasterKeySimple(encryptedData string) ([]byte, error)
+	DecryptData(encryptedData string) ([]byte, error)
 }
 
 // AuthMiddleware cria um middleware que verifica a autenticação
