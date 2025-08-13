@@ -73,17 +73,17 @@ func (cs *CryptService) EncryptData(data string) (string, error) {
 }
 
 // DecryptData descriptografa dados usando criptografia híbrida
-func (cs *CryptService) DecryptData(encryptedData string) (string, error) {
+func (cs *CryptService) DecryptData(encryptedData string) ([]byte, error) {
 	data, err := base64.StdEncoding.DecodeString(encryptedData)
 	if err != nil {
-		return "", fmt.Errorf("erro ao decodificar dados: %v", err)
+		return []byte{}, fmt.Errorf("erro ao decodificar dados: %v", err)
 	}
 
 	decrypted, err := HybridDecrypt(cs.privateKey, data)
 	if err != nil {
-		return "", fmt.Errorf("erro ao descriptografar dados: %v", err)
+		return []byte{}, fmt.Errorf("erro ao descriptografar dados: %v", err)
 	}
-	return string(decrypted), nil
+	return decrypted, nil
 }
 
 // EncryptWithMasterKeySimple criptografa usando a chave mestra AES (mais simples)
@@ -96,17 +96,17 @@ func (cs *CryptService) EncryptWithMasterKeySimple(data string) (string, error) 
 }
 
 // DecryptWithMasterKeySimple descriptografa usando a chave mestra AES
-func (cs *CryptService) DecryptWithMasterKeySimple(encryptedData string) (string, error) {
+func (cs *CryptService) DecryptWithMasterKeySimple(encryptedData string) ([]byte, error) {
 	data, err := base64.StdEncoding.DecodeString(encryptedData)
 	if err != nil {
-		return "", fmt.Errorf("erro ao decodificar dados: %v", err)
+		return []byte{}, fmt.Errorf("erro ao decodificar dados: %v", err)
 	}
 
 	decrypted, err := DecryptWithMasterKey(cs.masterKey, data)
 	if err != nil {
-		return "", err
+		return []byte{}, err
 	}
-	return string(decrypted), nil
+	return decrypted, nil
 }
 
 // CryptManager gerencia diferentes tipos de criptografia
@@ -120,7 +120,7 @@ func (cm *CryptManager) EncryptPassword(password string) (string, error) {
 }
 
 // DecryptPassword descriptografa uma senha
-func (cm *CryptManager) DecryptPassword(encryptedPassword string) (string, error) {
+func (cm *CryptManager) DecryptPassword(encryptedPassword string) ([]byte, error) {
 	return cm.hybridService.DecryptWithMasterKeySimple(encryptedPassword)
 }
 
@@ -130,6 +130,6 @@ func (cm *CryptManager) EncryptSensitiveData(data string) (string, error) {
 }
 
 // DecryptSensitiveData descriptografa dados sensíveis
-func (cm *CryptManager) DecryptSensitiveData(encryptedData string) (string, error) {
+func (cm *CryptManager) DecryptSensitiveData(encryptedData string) ([]byte, error) {
 	return cm.hybridService.DecryptData(encryptedData)
 }

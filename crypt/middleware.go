@@ -99,14 +99,14 @@ func (dm *DecryptionMiddleware) decryptFields(data map[string]interface{}) error
 }
 
 // decryptValue descriptografa um valor usando o tipo de descriptografia configurado
-func (dm *DecryptionMiddleware) decryptValue(encryptedValue string) (string, error) {
+func (dm *DecryptionMiddleware) decryptValue(encryptedValue string) ([]byte, error) {
 	switch dm.decryptionType {
 	case "hybrid":
 		return dm.cryptService.DecryptData(encryptedValue)
 	case "aes":
 		return dm.cryptService.DecryptWithMasterKeySimple(encryptedValue)
 	default:
-		return "", fmt.Errorf("tipo de descriptografia não suportado: %s", dm.decryptionType)
+		return []byte{}, fmt.Errorf("tipo de descriptografia não suportado: %s", dm.decryptionType)
 	}
 }
 
@@ -117,9 +117,9 @@ type DecryptionConfig struct {
 	// Tipo de descriptografia: "hybrid" ou "aes"
 	DecryptionType string
 	// Caminhos das chaves de criptografia
-	RSAPrivateKeyPath string
-	RSAPublicKeyPath  string
-	AESMasterKeyPath  string
+	RSAPrivateKeyPath  string
+	RSAPublicKeyPath   string
+	AESMasterKeyPath   string
 	AESRotationKeyPath string
 }
 
