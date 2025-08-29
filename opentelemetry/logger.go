@@ -147,6 +147,12 @@ type BusinessLog struct {
 	Metadata   map[string]interface{} `json:"metadata,omitempty"`
 }
 
+// DynamicLog permite logs completamente customizáveis com campos dinâmicos
+type DynamicLog struct {
+	BaseLog
+	Fields map[string]interface{} `json:"fields"`
+}
+
 // GetLogFields implementa LogData interface
 func (b *BusinessLog) GetLogFields() map[string]interface{} {
 	fields := map[string]interface{}{
@@ -174,6 +180,31 @@ func (b *BusinessLog) GetLogFields() map[string]interface{} {
 // GetLogType implementa LogData interface
 func (b *BusinessLog) GetLogType() string {
 	return "business"
+}
+
+// GetLogFields implementa LogData interface para DynamicLog
+func (d *DynamicLog) GetLogFields() map[string]interface{} {
+	fields := map[string]interface{}{
+		"type":       d.GetLogType(),
+		"timestamp":  d.Timestamp,
+		"level":      d.Level.String(),
+		"message":    d.Message,
+		"trace_id":   d.TraceID,
+		"span_id":    d.SpanID,
+		"service":    d.Service,
+	}
+	
+	// Adiciona todos os campos dinâmicos
+	for key, value := range d.Fields {
+		fields[key] = value
+	}
+	
+	return fields
+}
+
+// GetLogType implementa LogData interface para DynamicLog
+func (d *DynamicLog) GetLogType() string {
+	return "dynamic"
 }
 
 // LoggerConfig configuração do logger estruturado

@@ -168,3 +168,75 @@ func Error(ctx context.Context, message string, err error, data LogData) {
 func Fatal(ctx context.Context, message string, err error, data LogData) {
 	GetStructuredLogger().Fatal(ctx, message, err, data)
 }
+
+// NewDynamicLog cria um novo log dinâmico com campos customizáveis
+func NewDynamicLog(level LogLevel, message string, fields map[string]interface{}) *DynamicLog {
+	return &DynamicLog{
+		BaseLog: BaseLog{
+			Timestamp: time.Now(),
+			Level:     level,
+			Message:   message,
+		},
+		Fields: fields,
+	}
+}
+
+// LogDynamic registra um log dinâmico com campos customizáveis
+func LogDynamic(ctx context.Context, level LogLevel, message string, fields map[string]interface{}) {
+	dynamicLog := NewDynamicLog(level, message, fields)
+	
+	logger := GetStructuredLogger()
+	switch level {
+	case DEBUG:
+		logger.Debug(ctx, message, dynamicLog)
+	case INFO:
+		logger.Info(ctx, message, dynamicLog)
+	case WARN:
+		logger.Warn(ctx, message, dynamicLog)
+	case ERROR:
+		logger.Error(ctx, message, nil, dynamicLog)
+	case FATAL:
+		logger.Fatal(ctx, message, nil, dynamicLog)
+	}
+}
+
+// Funções de conveniência para logs dinâmicos por nível
+func LogDynamicDebug(ctx context.Context, message string, fields map[string]interface{}) {
+	LogDynamic(ctx, DEBUG, message, fields)
+}
+
+func LogDynamicInfo(ctx context.Context, message string, fields map[string]interface{}) {
+	LogDynamic(ctx, INFO, message, fields)
+}
+
+func LogDynamicWarn(ctx context.Context, message string, fields map[string]interface{}) {
+	LogDynamic(ctx, WARN, message, fields)
+}
+
+func LogDynamicError(ctx context.Context, message string, fields map[string]interface{}) {
+	LogDynamic(ctx, ERROR, message, fields)
+}
+
+func LogDynamicFatal(ctx context.Context, message string, fields map[string]interface{}) {
+	LogDynamic(ctx, FATAL, message, fields)
+}
+
+// WithField adiciona um campo ao log dinâmico (builder pattern)
+func (d *DynamicLog) WithField(key string, value interface{}) *DynamicLog {
+	if d.Fields == nil {
+		d.Fields = make(map[string]interface{})
+	}
+	d.Fields[key] = value
+	return d
+}
+
+// WithFields adiciona múltiplos campos ao log dinâmico
+func (d *DynamicLog) WithFields(fields map[string]interface{}) *DynamicLog {
+	if d.Fields == nil {
+		d.Fields = make(map[string]interface{})
+	}
+	for key, value := range fields {
+		d.Fields[key] = value
+	}
+	return d
+}

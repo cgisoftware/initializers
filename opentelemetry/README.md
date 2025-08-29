@@ -138,6 +138,60 @@ func createUser(ctx context.Context, userID string, email string) {
 }
 ```
 
+### Logs Dinâmicos
+
+Para casos onde você precisa de máxima flexibilidade com campos customizáveis:
+
+```go
+// Log dinâmico simples
+opentelemetry.LogDynamicInfo(ctx, "Operação realizada", map[string]interface{}{
+    "user_id":    "12345",
+    "action":     "create_user",
+    "ip_address": "192.168.1.1",
+    "duration":   "150ms",
+})
+
+// Log dinâmico com dados complexos
+opentelemetry.LogDynamicWarn(ctx, "Rate limit atingido", map[string]interface{}{
+    "user_id":       "67890",
+    "endpoint":      "/api/data",
+    "requests_count": 1000,
+    "limit":         500,
+    "reset_time":    time.Now().Add(1 * time.Hour),
+    "client_info": map[string]interface{}{
+        "user_agent": "MyApp/1.0",
+        "platform":   "iOS",
+        "version":    "14.5",
+    },
+})
+
+// Builder pattern para logs dinâmicos
+dynamicLog := opentelemetry.NewDynamicLog(opentelemetry.ERROR, "Falha no processamento", nil)
+dynamicLog.WithField("error_code", "PROC_001").
+    WithField("retry_count", 3).
+    WithField("max_retries", 5).
+    WithFields(map[string]interface{}{
+        "queue_name":     "processing_queue",
+        "message_id":     "msg_abc123",
+        "processing_time": 5.2,
+        "memory_usage":   "256MB",
+    })
+
+logger := opentelemetry.GetStructuredLogger()
+logger.Error(ctx, "Falha no processamento", fmt.Errorf("timeout"), dynamicLog)
+```
+
+#### Funções de Conveniência para Logs Dinâmicos
+
+```go
+// Por nível de log
+opentelemetry.LogDynamicDebug(ctx, "Debug info", fields)
+opentelemetry.LogDynamicInfo(ctx, "Info message", fields)
+opentelemetry.LogDynamicWarn(ctx, "Warning message", fields)
+opentelemetry.LogDynamicError(ctx, "Error message", fields)
+opentelemetry.LogDynamicFatal(ctx, "Fatal error", fields)
+```
+
 ## Tipos de Log Estruturados
 
 ### HTTPLog
@@ -207,6 +261,51 @@ businessLog := &opentelemetry.BusinessLog{
 
 opentelemetry.Info(ctx, "Usuário criado", businessLog)
 ```
+
+### DynamicLog
+
+Para logs completamente customizáveis com campos dinâmicos:
+
+```go
+// Criação direta
+dynamicLog := &opentelemetry.DynamicLog{
+    BaseLog: opentelemetry.BaseLog{
+        Timestamp: time.Now(),
+        Level:     opentelemetry.INFO,
+        Message:   "Operação customizada",
+    },
+    Fields: map[string]interface{}{
+        "custom_field1": "valor1",
+        "custom_field2": 123,
+        "nested_data": map[string]interface{}{
+            "sub_field": "sub_valor",
+        },
+    },
+}
+
+opentelemetry.Info(ctx, "Log customizado", dynamicLog)
+
+// Usando builder pattern
+dynamicLog := opentelemetry.NewDynamicLog(opentelemetry.WARN, "Alerta customizado", nil)
+dynamicLog.WithField("alert_type", "performance").
+    WithField("threshold", 95.5).
+    WithFields(map[string]interface{}{
+        "cpu_usage":    88.2,
+        "memory_usage": 76.1,
+        "disk_usage":   92.3,
+    })
+
+logger := opentelemetry.GetStructuredLogger()
+logger.Warn(ctx, "Sistema sob carga", dynamicLog)
+```
+
+#### Casos de Uso do DynamicLog
+
+- **Métricas customizadas**: Performance, uso de recursos, estatísticas
+- **Auditoria**: Logs de compliance com campos específicos do domínio
+- **Integrações**: Logs de APIs externas com metadados variáveis
+- **Eventos de negócio**: Transações, operações com dados específicos
+- **Debugging**: Logs temporários com informações contextuais
 
 ## Configuração Avançada
 
