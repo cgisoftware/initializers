@@ -133,3 +133,37 @@ func (cm *CryptManager) EncryptSensitiveData(data string) (string, error) {
 func (cm *CryptManager) DecryptSensitiveData(encryptedData string) ([]byte, error) {
 	return cm.hybridService.DecryptData(encryptedData)
 }
+
+// GenerateRSAKeys gera um novo par de chaves RSA
+// keySize: tamanho da chave em bits (recomendado: 2048 ou 4096)
+func (cs *CryptService) GenerateRSAKeys(keySize int) (*RSAKeyPair, error) {
+	return GenerateRSAKeyPair(keySize)
+}
+
+// GenerateRSAKeysDefault gera um par de chaves RSA com tamanho padrão de 2048 bits
+func (cs *CryptService) GenerateRSAKeysDefault() (*RSAKeyPair, error) {
+	return GenerateRSAKeyPairDefault()
+}
+
+// HybridEncryptWithKeys criptografa dados usando criptografia híbrida com chaves fornecidas
+func (cs *CryptService) HybridEncryptWithKeys(data string, publicKey *rsa.PublicKey) (string, error) {
+	encrypted, err := HybridEncrypt(publicKey, []byte(data))
+	if err != nil {
+		return "", fmt.Errorf("erro ao criptografar dados com chaves fornecidas: %v", err)
+	}
+	return base64.StdEncoding.EncodeToString(encrypted), nil
+}
+
+// HybridDecryptWithKeys descriptografa dados usando criptografia híbrida com chaves fornecidas
+func (cs *CryptService) HybridDecryptWithKeys(encryptedData string, privateKey *rsa.PrivateKey) ([]byte, error) {
+	data, err := base64.StdEncoding.DecodeString(encryptedData)
+	if err != nil {
+		return []byte{}, fmt.Errorf("erro ao decodificar dados: %v", err)
+	}
+
+	decrypted, err := HybridDecrypt(privateKey, data)
+	if err != nil {
+		return []byte{}, fmt.Errorf("erro ao descriptografar dados com chaves fornecidas: %v", err)
+	}
+	return decrypted, nil
+}
