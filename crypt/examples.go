@@ -241,6 +241,172 @@ func ExampleKeyGeneration() {
 	*/
 }
 
+// ExampleRSAKeyGeneration demonstra como gerar chaves RSA
+func ExampleRSAKeyGeneration() {
+	fmt.Println("=== Exemplo de Geração de Chaves RSA ===")
+
+	// Gerar par de chaves RSA com tamanho padrão (2048 bits)
+	keyPair, err := GenerateRSAKeyPairDefault()
+	if err != nil {
+		log.Printf("Erro ao gerar chaves RSA: %v", err)
+		return
+	}
+
+	fmt.Println("Chave Privada RSA:")
+	fmt.Println(keyPair.PrivateKey)
+	fmt.Println("\nChave Pública RSA:")
+	fmt.Println(keyPair.PublicKey)
+
+	// Gerar par de chaves RSA com tamanho personalizado (4096 bits)
+	keyPair4096, err := GenerateRSAKeyPair(4096)
+	if err != nil {
+		log.Printf("Erro ao gerar chaves RSA 4096: %v", err)
+		return
+	}
+
+	fmt.Println("\n=== Chaves RSA 4096 bits geradas com sucesso ===")
+	fmt.Printf("Tamanho da chave privada: %d caracteres\n", len(keyPair4096.PrivateKey))
+	fmt.Printf("Tamanho da chave pública: %d caracteres\n", len(keyPair4096.PublicKey))
+}
+
+// ExampleRSAKeyGenerationWithService demonstra geração de chaves usando o CryptService
+func ExampleRSAKeyGenerationWithService() {
+	fmt.Println("=== Exemplo de Geração de Chaves RSA via CryptService ===")
+
+	// Nota: Este exemplo assume que você já tem um CryptService inicializado
+	// Para fins de demonstração, vamos mostrar como seria usado
+
+	// Simular um serviço (normalmente você teria um serviço já inicializado)
+	// cryptService := &CryptService{} // Normalmente inicializado com Initialize()
+
+	// Gerar chaves usando o serviço
+	// keyPair, err := cryptService.GenerateRSAKeysDefault()
+	// if err != nil {
+	//     log.Printf("Erro ao gerar chaves via serviço: %v", err)
+	//     return
+	// }
+
+	fmt.Println("Para usar com CryptService:")
+	fmt.Println("keyPair, err := cryptService.GenerateRSAKeysDefault()")
+	fmt.Println("// ou")
+	fmt.Println("keyPair, err := cryptService.GenerateRSAKeys(4096)")
+
+	// Demonstração direta sem serviço
+	keyPair, err := GenerateRSAKeyPairDefault()
+	if err != nil {
+		log.Printf("Erro ao gerar chaves: %v", err)
+		return
+	}
+
+	fmt.Println("\nChaves geradas com sucesso!")
+	fmt.Printf("Chave privada começa com: %.50s...\n", keyPair.PrivateKey)
+	fmt.Printf("Chave pública começa com: %.50s...\n", keyPair.PublicKey)
+}
+
+// ExampleHybridEncryptionWithKeys demonstra criptografia híbrida usando chaves fornecidas
+func ExampleHybridEncryptionWithKeys() {
+	fmt.Println("=== Exemplo de Criptografia Híbrida com Chaves Fornecidas ===")
+
+	// Gerar um par de chaves para o exemplo
+	keyPair, err := GenerateRSAKeyPairDefault()
+	if err != nil {
+		log.Printf("Erro ao gerar chaves: %v", err)
+		return
+	}
+
+	// Converter as chaves PEM de volta para objetos RSA
+	publicKey, err := LoadRSAPublicKeyFromPEM(keyPair.PublicKey)
+	if err != nil {
+		log.Printf("Erro ao carregar chave pública: %v", err)
+		return
+	}
+
+	privateKey, err := LoadRSAPrivateKeyFromPEM(keyPair.PrivateKey)
+	if err != nil {
+		log.Printf("Erro ao carregar chave privada: %v", err)
+		return
+	}
+
+	// Dados para criptografar
+	data := "Dados confidenciais para criptografia híbrida com chaves fornecidas"
+
+	// Criptografar usando função global
+	encrypted, err := HybridEncryptWithKeys(data, publicKey)
+	if err != nil {
+		log.Printf("Erro ao criptografar: %v", err)
+		return
+	}
+
+	fmt.Printf("Dados originais: %s\n", data)
+	fmt.Printf("Dados criptografados: %.100s...\n", encrypted)
+
+	// Descriptografar usando função global
+	decrypted, err := HybridDecryptWithKeys(encrypted, privateKey)
+	if err != nil {
+		log.Printf("Erro ao descriptografar: %v", err)
+		return
+	}
+
+	fmt.Printf("Dados descriptografados: %s\n", string(decrypted))
+
+	// Verificar se os dados são iguais
+	if string(decrypted) == data {
+		fmt.Println("✅ Criptografia e descriptografia funcionaram corretamente!")
+	} else {
+		fmt.Println("❌ Erro: dados descriptografados não coincidem com os originais")
+	}
+}
+
+// ExampleHybridEncryptionWithCryptService demonstra uso via CryptService
+func ExampleHybridEncryptionWithCryptService() {
+	fmt.Println("=== Exemplo de Criptografia Híbrida via CryptService ===")
+
+	// Para este exemplo, vamos simular o uso com chaves geradas
+	keyPair, err := GenerateRSAKeyPairDefault()
+	if err != nil {
+		log.Printf("Erro ao gerar chaves: %v", err)
+		return
+	}
+
+	// Converter chaves PEM para objetos RSA
+	publicKey, err := LoadRSAPublicKeyFromPEM(keyPair.PublicKey)
+	if err != nil {
+		log.Printf("Erro ao carregar chave pública: %v", err)
+		return
+	}
+
+	privateKey, err := LoadRSAPrivateKeyFromPEM(keyPair.PrivateKey)
+	if err != nil {
+		log.Printf("Erro ao carregar chave privada: %v", err)
+		return
+	}
+
+	// Criar uma instância do CryptService (simulado)
+	cryptService := &CryptService{}
+
+	// Dados para teste
+	data := "Teste de criptografia híbrida via CryptService"
+
+	// Usar métodos do CryptService
+	encrypted, err := cryptService.HybridEncryptWithKeys(data, publicKey)
+	if err != nil {
+		log.Printf("Erro ao criptografar via CryptService: %v", err)
+		return
+	}
+
+	fmt.Printf("Dados criptografados via CryptService: %.100s...\n", encrypted)
+
+	// Descriptografar
+	decrypted, err := cryptService.HybridDecryptWithKeys(encrypted, privateKey)
+	if err != nil {
+		log.Printf("Erro ao descriptografar via CryptService: %v", err)
+		return
+	}
+
+	fmt.Printf("Dados descriptografados: %s\n", string(decrypted))
+	fmt.Println("✅ Exemplo concluído com sucesso!")
+}
+
 // ExampleEncryptedPayload demonstra o uso da estrutura EncryptedPayload
 func ExampleEncryptedPayload() {
 	// Exemplo de payload criptografado
