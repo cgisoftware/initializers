@@ -14,12 +14,14 @@ O pacote `crypt` fornece funcionalidades completas de criptografia, incluindo cr
 - Suporte a chaves RSA de 2048, 3072 e 4096 bits
 - Criptografia e descriptografia de dados
 - Carregamento de chaves de arquivos PEM
-- Geração de pares de chaves
+- **Geração automática de pares de chaves RSA**
+- Exportação de chaves em formato PEM
 
 ### 🔄 Criptografia Híbrida
 - Combinação de RSA + AES para melhor performance
 - Criptografia de chaves AES com RSA
 - Criptografia de dados com AES
+- **Métodos que aceitam chaves como parâmetros**
 - Ideal para grandes volumes de dados
 
 ### 🛡️ Gerenciamento de Chaves
@@ -146,23 +148,40 @@ fmt.Printf("Dados descriptografados: %s\n", string(decrypted))
 
 ## Criptografia RSA
 
-### Geração de Chaves
+### Geração de Chaves RSA
 ```go
-// Gerar par de chaves RSA
-privateKey, publicKey, err := crypt.GenerateRSAKeyPair(2048)
+// Gerar par de chaves RSA com tamanho padrão (2048 bits)
+keyPair, err := crypt.GenerateRSAKeyPairDefault()
 if err != nil {
     log.Fatal(err)
 }
 
-// Salvar chaves em arquivos
-err = crypt.SaveRSAPrivateKeyToFile(privateKey, "private_key.pem")
+// Acessar as chaves em formato PEM
+fmt.Println("Chave Privada:")
+fmt.Println(keyPair.PrivateKey)
+
+fmt.Println("Chave Pública:")
+fmt.Println(keyPair.PublicKey)
+
+// Gerar chaves com tamanho personalizado
+keyPair4096, err := crypt.GenerateRSAKeyPair(4096)
 if err != nil {
     log.Fatal(err)
 }
 
-err = crypt.SaveRSAPublicKeyToFile(publicKey, "public_key.pem")
+// Usar com CryptService
+cryptService, _ := crypt.Initialize("private.pem", "public.pem", "master.key", "rotation.key")
+keyPair, err = cryptService.GenerateRSAKeysDefault()
 if err != nil {
     log.Fatal(err)
+}
+```
+
+### Estrutura RSAKeyPair
+```go
+type RSAKeyPair struct {
+    PrivateKey string `json:"private_key"` // Chave privada em formato PEM
+    PublicKey  string `json:"public_key"`  // Chave pública em formato PEM
 }
 ```
 
@@ -270,6 +289,61 @@ if err != nil {
 
 // Migrar dados da chave mestra para chave de rotação
 migratedData, err := service.MigrateToRotationKey(encrypted)
+if err != nil {
+    log.Fatal(err)
+}
+```
+
+### Criptografia Híbrida com Chaves Fornecidas
+
+#### Funções Globais
+```go
+// Gerar chaves para o exemplo
+keyPair, err := crypt.GenerateRSAKeyPairDefault()
+if err != nil {
+    log.Fatal(err)
+}
+
+// Converter chaves PEM para objetos RSA
+publicKey, err := crypt.LoadRSAPublicKeyFromPEM(keyPair.PublicKey)
+if err != nil {
+    log.Fatal(err)
+}
+
+privateKey, err := crypt.LoadRSAPrivateKeyFromPEM(keyPair.PrivateKey)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Criptografar usando chaves fornecidas
+data := "Dados confidenciais"
+encrypted, err := crypt.HybridEncryptWithKeys(data, publicKey)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Descriptografar usando chaves fornecidas
+decrypted, err := crypt.HybridDecryptWithKeys(encrypted, privateKey)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Dados descriptografados: %s\n", string(decrypted))
+```
+
+#### Via CryptService
+```go
+// Usar métodos do CryptService com chaves específicas
+cryptService := &crypt.CryptService{}
+
+// Criptografar
+encrypted, err := cryptService.HybridEncryptWithKeys(data, publicKey)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Descriptografar
+decrypted, err := cryptService.HybridDecryptWithKeys(encrypted, privateKey)
 if err != nil {
     log.Fatal(err)
 }
