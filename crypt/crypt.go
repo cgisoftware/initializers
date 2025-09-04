@@ -122,6 +122,118 @@ func sha256Hash() hash.Hash {
 	return sha256.New()
 }
 
+// RSAKeyPair representa um par de chaves RSA
+type RSAKeyPair struct {
+	PrivateKey string `json:"private_key"` // Chave privada em formato PEM
+	PublicKey  string `json:"public_key"`  // Chave pública em formato PEM
+}
+
+// GenerateRSAKeyPair gera um novo par de chaves RSA
+// keySize: tamanho da chave em bits (recomendado: 2048 ou 4096)
+func GenerateRSAKeyPair(keySize int) (*RSAKeyPair, error) {
+	// Valida o tamanho da chave
+	if keySize < 2048 {
+		return nil, fmt.Errorf("tamanho de chave muito pequeno: mínimo 2048 bits")
+	}
+
+	// Gera a chave privada
+	privateKey, err := rsa.GenerateKey(rand.Reader, keySize)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao gerar chave privada RSA: %v", err)
+	}
+
+	// Converte a chave privada para formato PEM
+	privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: privateKeyBytes,
+	})
+
+	// Extrai a chave pública
+	publicKey := &privateKey.PublicKey
+
+	// Converte a chave pública para formato PEM
+	publicKeyBytes, err := x509.MarshalPKIXPublicKey(publicKey)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao serializar chave pública: %v", err)
+	}
+
+	publicKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: publicKeyBytes,
+	})
+
+	return &RSAKeyPair{
+		PrivateKey: string(privateKeyPEM),
+		PublicKey:  string(publicKeyPEM),
+	}, nil
+}
+
+// GenerateRSAKeyPairDefault gera um par de chaves RSA com tamanho padrão de 2048 bits
+func GenerateRSAKeyPairDefault() (*RSAKeyPair, error) {
+	return GenerateRSAKeyPair(2048)
+}
+
+// HybridEncryptWithKeys criptografa dados usando criptografia híbrida com chaves fornecidas
+// Função global que permite usar chaves RSA específicas sem precisar de um CryptService
+func HybridEncryptWithKeys(data string, publicKey *rsa.PublicKey) (string, error) {
+	encrypted, err := HybridEncrypt(publicKey, []byte(data))
+	if err != nil {
+		return "", fmt.Errorf("erro ao criptografar dados: %v", err)
+	}
+	return base64.StdEncoding.EncodeToString(encrypted), nil
+}
+
+// HybridDecryptWithKeys descriptografa dados usando criptografia híbrida com chaves fornecidas
+// Função global que permite usar chaves RSA específicas sem precisar de um CryptService
+func HybridDecryptWithKeys(encryptedData string, privateKey *rsa.PrivateKey) ([]byte, error) {
+	data, err := base64.StdEncoding.DecodeString(encryptedData)
+	if err != nil {
+		return []byte{}, fmt.Errorf("erro ao decodificar dados: %v", err)
+	}
+
+	decrypted, err := HybridDecrypt(privateKey, data)
+	if err != nil {
+		return []byte{}, fmt.Errorf("erro ao descriptografar dados: %v", err)
+	}
+	return decrypted, nil
+}
+
+// LoadRSAPrivateKeyFromPEM carrega uma chave privada RSA de uma string PEM
+func LoadRSAPrivateKeyFromPEM(pemData string) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode([]byte(pemData))
+	if block == nil {
+		return nil, fmt.Errorf("falha ao decodificar bloco PEM")
+	}
+
+	privateKey, err := x509.ParsePKCS1PrivateKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao analisar chave privada: %v", err)
+	}
+
+	return privateKey, nil
+}
+
+// LoadRSAPublicKeyFromPEM carrega uma chave pública RSA de uma string PEM
+func LoadRSAPublicKeyFromPEM(pemData string) (*rsa.PublicKey, error) {
+	block, _ := pem.Decode([]byte(pemData))
+	if block == nil {
+		return nil, fmt.Errorf("falha ao decodificar bloco PEM")
+	}
+
+	publicKeyInterface, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao analisar chave pública: %v", err)
+	}
+
+	publicKey, ok := publicKeyInterface.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("chave não é uma chave pública RSA")
+	}
+
+	return publicKey, nil
+}
+
 // Método para criptografar (Híbrido)
 func HybridEncrypt(pub *rsa.PublicKey, data []byte) ([]byte, error) {
 	aesKey, err := generateAESKey()
