@@ -1,9 +1,14 @@
 package crypt
 
 import (
+	"context"
+	"crypto/aes"
+	"crypto/cipher"
+	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
 	"fmt"
+	"io"
 )
 
 // CryptService encapsula operações de criptografia
@@ -166,4 +171,39 @@ func (cs *CryptService) HybridDecryptWithKeys(encryptedData string, privateKey *
 		return []byte{}, fmt.Errorf("erro ao descriptografar dados com chaves fornecidas: %v", err)
 	}
 	return decrypted, nil
+}
+
+func GenerateToken(ctx context.Context, key []byte, data []byte) (string, error) {
+	// Gerar IV aleatório
+	iv := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		return "", fmt.Errorf("erro ao gerar IV aleatório: %w", err)
+	}
+
+	// Criar cipher
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("erro ao criar cipher: %w", err)
+	}
+
+	// CBC mode
+	mode := cipher.NewCBCEncrypter(block, iv)
+
+	// PKCS7 padding
+	padding := aes.BlockSize - len(data)%aes.BlockSize
+	padText := append(data, bytesRepeat(byte(padding), padding)...)
+
+	cipherText := make([]byte, len(padText))
+	mode.CryptBlocks(cipherText, padText)
+
+	return base64.StdEncoding.EncodeToString(cipherText) + "-" + base64.StdEncoding.EncodeToString(iv), nil
+}
+
+// Função para gerar padding
+func bytesRepeat(b byte, count int) []byte {
+	result := make([]byte, count)
+	for i := range result {
+		result[i] = b
+	}
+	return result
 }
