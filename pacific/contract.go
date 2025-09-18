@@ -1,7 +1,10 @@
 package pacific
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type PacificHttpRepository interface {
-	Send(context.Context, string, PacificInput) ([]byte, *PacificError)
+	Send(context.Context, string, PacificInput, time.Duration) ([]byte, error)
 }
