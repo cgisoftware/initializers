@@ -15,8 +15,8 @@ import (
 type pacificHttpRepository struct{}
 
 // Send implements domain.PacificHttpRepository.
-func (repository *pacificHttpRepository) Send(ctx context.Context, url string, input PacificInput) ([]byte, *PacificError) {
-	ctx, cancel := context.WithTimeout(ctx, time.Minute)
+func (repository *pacificHttpRepository) Send(ctx context.Context, url string, input PacificInput, timeout time.Duration) ([]byte, error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	ctx, span := opentelemetry.StartTracing(ctx, "paficicHttpRepository.Send")
@@ -29,7 +29,7 @@ func (repository *pacificHttpRepository) Send(ctx context.Context, url string, i
 	if err != nil {
 		errMessage := "Não foi possível realizar o parse do JSON"
 		opentelemetry.ErrorLog(ctx, errMessage, err)
-		return nil, &PacificError{
+		return nil, PacificError{
 			StatusCode: http.StatusBadGateway,
 			Message:    errMessage,
 		}
@@ -40,7 +40,7 @@ func (repository *pacificHttpRepository) Send(ctx context.Context, url string, i
 	if err != nil {
 		errMessage := "Não foi possível criar a REQUEST"
 		opentelemetry.ErrorLog(ctx, errMessage, err)
-		return nil, &PacificError{
+		return nil, PacificError{
 			StatusCode: http.StatusBadGateway,
 			Message:    errMessage,
 		}
@@ -55,23 +55,48 @@ func (repository *pacificHttpRepository) Send(ctx context.Context, url string, i
 		opentelemetry.ErrorLog(ctx, errMessage, err, opentelemetry.WithHttpLog(opentelemetry.NewHttpLog(
 			req, nil, http.StatusBadGateway,
 		)))
-		return nil, &PacificError{
+		return nil, PacificError{
 			StatusCode: http.StatusBadGateway,
 			Message:    errMessage,
 		}
 	}
 
-	body, _ := io.ReadAll(resp.Body)
-
 	if resp.StatusCode != 200 {
+		body, err := io.ReadAll(resp.Body)
+
+		if err != nil {
+			errMessage := "Erro ao ler o body da resposta"
+			opentelemetry.ErrorLog(ctx, errMessage, err, opentelemetry.WithHttpLog(opentelemetry.NewHttpLog(
+				req, nil, http.StatusInternalServerError,
+			)))
+			return nil, PacificError{
+				StatusCode: http.StatusInternalServerError,
+				Message:    errMessage,
+			}
+		}
+
 		errMessage := "Erro interno do PACIFIC"
 		opentelemetry.ErrorLog(ctx, errMessage, err, opentelemetry.WithHttpLog(opentelemetry.NewHttpLog(
 			req, body, int64(resp.StatusCode),
 		)))
-		return nil, &PacificError{
+		return nil, PacificError{
 			StatusCode: resp.StatusCode,
 			Message:    errMessage,
 			Body:       body,
+		}
+	}
+
+	body, err := io.ReadAll(resp.Body)
+
+	if err != nil {
+		errMessage := "Erro ao ler o body da resposta"
+		opentelemetry.ErrorLog(ctx, errMessage, err, opentelemetry.WithHttpLog(opentelemetry.NewHttpLog(
+			req, nil, http.StatusInternalServerError,
+		)))
+		return nil, PacificError{
+			StatusCode: http.StatusInternalServerError,
+			Message:    errMessage,
+			Body:       nil,
 		}
 	}
 
@@ -80,7 +105,7 @@ func (repository *pacificHttpRepository) Send(ctx context.Context, url string, i
 		opentelemetry.ErrorLog(ctx, errMessage, err, opentelemetry.WithHttpLog(opentelemetry.NewHttpLog(
 			req, body, http.StatusInternalServerError,
 		)))
-		return nil, &PacificError{
+		return nil, PacificError{
 			StatusCode: http.StatusInternalServerError,
 			Message:    errMessage,
 			Body:       body,
