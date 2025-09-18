@@ -7,6 +7,6 @@ type PacificError struct {
 	Message    string
 }
 
-func (e *PacificError) Error() string {
+func (e PacificError) Error() string {
 	return e.Message
 }
