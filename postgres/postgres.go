@@ -7,6 +7,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/cgisoftware/initializers/postgres/types"
+	"github.com/cgisoftware/initializers/postgres/uow"
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/jmoiron/sqlx"
 
@@ -49,13 +51,8 @@ func WithMigrations(value bool) DatabaseOption {
 	}
 }
 
-// setGlobalDB sets the global database instance
-func setGlobalDB(db Database) {
-	globalDB = db
-}
-
 // Initialize retorna um pool de conexões com o banco de dados
-func Initialize(ctx context.Context, databaseURL string, opts ...DatabaseOption) Database {
+func Initialize(ctx context.Context, databaseURL string, opts ...DatabaseOption) types.Database {
 	databaseOptions := &DatabaseClientConfig{
 		maxOpenConns:    25,
 		maxIdleConns:    10,
@@ -83,7 +80,7 @@ func Initialize(ctx context.Context, databaseURL string, opts ...DatabaseOption)
 		runMigrations(databaseOptions.databaseURL)
 	}
 
-	setGlobalDB(db)
+	uow.SetGlobalDB(db)
 	return db
 }
 

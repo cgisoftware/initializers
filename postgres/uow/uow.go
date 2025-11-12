@@ -1,4 +1,4 @@
-package postgres
+package uow
 
 import (
 	"context"
@@ -7,30 +7,37 @@ import (
 	"sync"
 
 	"github.com/jmoiron/sqlx"
+
+	"github.com/cgisoftware/initializers/postgres/types"
 )
 
 var (
 	// globalUoW is the global UnitOfWork instance
 	globalUoW *UnitOfWork
-	globalDB  Database
+	globalDB  types.Database
 	uoOnce    sync.Once
 )
 
 // UnitOfWork represents a unit of work pattern for database operations
 type UnitOfWork struct {
-	db           Database
+	db           types.Database
 	tx           *sql.Tx
 	repositories map[string]any
 	mu           sync.Mutex
 }
 
+// SetGlobalDB sets the global database instance
+func SetGlobalDB(db types.Database) {
+	globalDB = db
+}
+
 // New creates a new UnitOfWork instance (alias for NewUnitOfWork for backward compatibility)
-func New(db Database) *UnitOfWork {
+func New(db types.Database) *UnitOfWork {
 	return NewUnitOfWork(db)
 }
 
 // NewUnitOfWork creates a new UnitOfWork instance
-func NewUnitOfWork(db Database) *UnitOfWork {
+func NewUnitOfWork(db types.Database) *UnitOfWork {
 	return &UnitOfWork{
 		db:           db,
 		repositories: make(map[string]any),
