@@ -13,6 +13,12 @@ type Database interface {
 	QueryRow(query string, args ...any) *sql.Row
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	QueryRowxContext(ctx context.Context, query string, args ...any) *sqlx.Row
+	QueryRowx(query string, args ...any) *sqlx.Row
+
+	NamedExecContext(ctx context.Context, query string, arg any) (sql.Result, error)
+	NamedExec(query string, arg any) (sql.Result, error)
+	NamedQuery(query string, arg any) (*sqlx.Rows, error)
+	NamedQueryContext(ctx context.Context, query string, arg any) (*sqlx.Rows, error)
 
 	Exec(query string, args ...any) (sql.Result, error)
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
@@ -28,4 +34,6 @@ type Database interface {
 	DriverName() string
 	Preparex(query string) (*sqlx.Stmt, error)
 	PrepareNamed(query string) (*sqlx.NamedStmt, error)
+	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+	Begin() (*sql.Tx, error)
 }
