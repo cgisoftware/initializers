@@ -35,5 +35,6 @@ type Database interface {
 	Preparex(query string) (*sqlx.Stmt, error)
 	PrepareNamed(query string) (*sqlx.NamedStmt, error)
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
+	BeginTxx(ctx context.Context, opts *sql.TxOptions) (*sqlx.Tx, error)
 	Begin() (*sql.Tx, error)
 }

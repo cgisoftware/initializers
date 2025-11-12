@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"log"
 	"os"
@@ -9,12 +10,145 @@ import (
 
 	"github.com/cgisoftware/initializers/postgres/types"
 	"github.com/cgisoftware/initializers/postgres/uow"
+
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/jmoiron/sqlx"
 
 	_ "github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
+
+type sqlxDB struct {
+	db types.Database
+}
+
+// Begin implements types.Database.
+func (d sqlxDB) Begin() (*sql.Tx, error) {
+	return d.db.Begin()
+}
+
+// BeginTx implements types.Database.
+func (d sqlxDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
+	return d.db.BeginTx(ctx, opts)
+}
+
+// BeginTxx implements types.Database.
+func (d sqlxDB) BeginTxx(ctx context.Context, opts *sql.TxOptions) (*sqlx.Tx, error) {
+	return d.db.BeginTxx(ctx, opts)
+}
+
+// DriverName implements types.Database.
+func (d sqlxDB) DriverName() string {
+	return d.db.DriverName()
+}
+
+// Exec implements types.Database.
+func (d sqlxDB) Exec(query string, args ...any) (sql.Result, error) {
+	return d.db.Exec(query, args...)
+}
+
+// ExecContext implements types.Database.
+func (d sqlxDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	return d.db.ExecContext(ctx, query, args...)
+}
+
+// Get implements types.Database.
+func (d sqlxDB) Get(dest any, query string, args ...any) error {
+	return d.db.Get(dest, query, args...)
+}
+
+// GetContext implements types.Database.
+func (d sqlxDB) GetContext(ctx context.Context, dest any, query string, args ...any) error {
+	return d.db.GetContext(ctx, dest, query, args...)
+}
+
+// NamedExec implements types.Database.
+func (d sqlxDB) NamedExec(query string, arg any) (sql.Result, error) {
+	return d.db.NamedExec(query, arg)
+}
+
+// NamedExecContext implements types.Database.
+func (d sqlxDB) NamedExecContext(ctx context.Context, query string, arg any) (sql.Result, error) {
+	return d.db.NamedExecContext(ctx, query, arg)
+}
+
+// NamedQuery implements types.Database.
+func (d sqlxDB) NamedQuery(query string, arg any) (*sqlx.Rows, error) {
+	return d.db.NamedQuery(query, arg)
+}
+
+// NamedQueryContext implements types.Database.
+func (d sqlxDB) NamedQueryContext(ctx context.Context, query string, arg any) (*sqlx.Rows, error) {
+	return d.db.NamedQueryContext(ctx, query, arg)
+}
+
+// Ping implements types.Database.
+func (d sqlxDB) Ping() error {
+	return d.db.Ping()
+}
+
+// PingContext implements types.Database.
+func (d sqlxDB) PingContext(ctx context.Context) error {
+	return d.db.PingContext(ctx)
+}
+
+// PrepareNamed implements types.Database.
+func (d sqlxDB) PrepareNamed(query string) (*sqlx.NamedStmt, error) {
+	return d.db.PrepareNamed(query)
+}
+
+// Preparex implements types.Database.
+func (d sqlxDB) Preparex(query string) (*sqlx.Stmt, error) {
+	return d.db.Preparex(query)
+}
+
+// Query implements types.Database.
+func (d sqlxDB) Query(query string, args ...any) (*sql.Rows, error) {
+	return d.db.Query(query, args...)
+}
+
+// QueryContext implements types.Database.
+func (d sqlxDB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	return d.db.QueryContext(ctx, query, args...)
+}
+
+// QueryRow implements types.Database.
+func (d sqlxDB) QueryRow(query string, args ...any) *sql.Row {
+	return d.db.QueryRow(query, args...)
+}
+
+// QueryRowContext implements types.Database.
+func (d sqlxDB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	return d.db.QueryRowContext(ctx, query, args...)
+}
+
+// QueryRowx implements types.Database.
+func (d sqlxDB) QueryRowx(query string, args ...any) *sqlx.Row {
+	return d.db.QueryRowx(query, args...)
+}
+
+// QueryRowxContext implements types.Database.
+func (d sqlxDB) QueryRowxContext(ctx context.Context, query string, args ...any) *sqlx.Row {
+	if tx := uow.GetTx(ctx); tx != nil {
+		return tx.QueryRowxContext(ctx, query, args...)
+	}
+	return d.db.QueryRowxContext(ctx, query, args...)
+}
+
+// Rebind implements types.Database.
+func (d sqlxDB) Rebind(query string) string {
+	return d.db.Rebind(query)
+}
+
+// Select implements types.Database.
+func (d sqlxDB) Select(dest any, query string, args ...any) error {
+	return d.db.Select(dest, query, args...)
+}
+
+// SelectContext implements types.Database.
+func (d sqlxDB) SelectContext(ctx context.Context, dest any, query string, args ...any) error {
+	return d.db.SelectContext(ctx, dest, query, args...)
+}
 
 type DatabaseClientConfig struct {
 	databaseURL     string
@@ -80,8 +214,11 @@ func Initialize(ctx context.Context, databaseURL string, opts ...DatabaseOption)
 		runMigrations(databaseOptions.databaseURL)
 	}
 
-	uow.SetGlobalDB(db)
-	return db
+	database := sqlxDB{db}
+
+	uow.SetGlobalDB(database)
+
+	return database
 }
 
 func runMigrations(databaseURL string) {
