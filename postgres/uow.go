@@ -18,19 +18,19 @@ var (
 
 // UnitOfWork represents a unit of work pattern for database operations
 type UnitOfWork struct {
-	db           *sql.DB
+	db           Database
 	tx           *sql.Tx
 	repositories map[string]any
 	mu           sync.Mutex
 }
 
 // New creates a new UnitOfWork instance (alias for NewUnitOfWork for backward compatibility)
-func New(db *sql.DB) *UnitOfWork {
+func New(db Database) *UnitOfWork {
 	return NewUnitOfWork(db)
 }
 
 // NewUnitOfWork creates a new UnitOfWork instance
-func NewUnitOfWork(db *sql.DB) *UnitOfWork {
+func NewUnitOfWork(db Database) *UnitOfWork {
 	return &UnitOfWork{
 		db:           db,
 		repositories: make(map[string]any),
@@ -150,11 +150,10 @@ func GetDB() (*sql.DB, bool) {
 func autoInitUoW() {
 	uoOnce.Do(func() {
 		if globalUoW == nil {
-			db, ok := GetDB()
-			if !ok {
+			if globalDB == nil {
 				panic("database not initialized. Call postgres.Initialize first")
 			}
-			globalUoW = New(db)
+			globalUoW = New(globalDB)
 		}
 	})
 }
