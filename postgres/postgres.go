@@ -34,6 +34,7 @@ func (d sqlxDB) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, erro
 
 // BeginTxx implements types.Database.
 func (d sqlxDB) BeginTxx(ctx context.Context, opts *sql.TxOptions) (*sqlx.Tx, error) {
+
 	return d.db.BeginTxx(ctx, opts)
 }
 
@@ -44,36 +45,57 @@ func (d sqlxDB) DriverName() string {
 
 // Exec implements types.Database.
 func (d sqlxDB) Exec(query string, args ...any) (sql.Result, error) {
+	if tx := uow.GetTx(context.Background()); tx != nil {
+		return tx.Exec(query, args...)
+	}
 	return d.db.Exec(query, args...)
 }
 
 // ExecContext implements types.Database.
 func (d sqlxDB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	if tx := uow.GetTx(ctx); tx != nil {
+		return tx.ExecContext(ctx, query, args...)
+	}
 	return d.db.ExecContext(ctx, query, args...)
 }
 
 // Get implements types.Database.
 func (d sqlxDB) Get(dest any, query string, args ...any) error {
+	if tx := uow.GetTx(context.Background()); tx != nil {
+		return tx.Get(dest, query, args...)
+	}
 	return d.db.Get(dest, query, args...)
 }
 
 // GetContext implements types.Database.
 func (d sqlxDB) GetContext(ctx context.Context, dest any, query string, args ...any) error {
+	if tx := uow.GetTx(ctx); tx != nil {
+		return tx.GetContext(ctx, dest, query, args...)
+	}
 	return d.db.GetContext(ctx, dest, query, args...)
 }
 
 // NamedExec implements types.Database.
 func (d sqlxDB) NamedExec(query string, arg any) (sql.Result, error) {
+	if tx := uow.GetTx(context.Background()); tx != nil {
+		return tx.NamedExec(query, arg)
+	}
 	return d.db.NamedExec(query, arg)
 }
 
 // NamedExecContext implements types.Database.
 func (d sqlxDB) NamedExecContext(ctx context.Context, query string, arg any) (sql.Result, error) {
+	if tx := uow.GetTx(ctx); tx != nil {
+		return tx.NamedExecContext(ctx, query, arg)
+	}
 	return d.db.NamedExecContext(ctx, query, arg)
 }
 
 // NamedQuery implements types.Database.
 func (d sqlxDB) NamedQuery(query string, arg any) (*sqlx.Rows, error) {
+	if tx := uow.GetTx(context.Background()); tx != nil {
+		return tx.NamedQuery(query, arg)
+	}
 	return d.db.NamedQuery(query, arg)
 }
 
@@ -94,36 +116,57 @@ func (d sqlxDB) PingContext(ctx context.Context) error {
 
 // PrepareNamed implements types.Database.
 func (d sqlxDB) PrepareNamed(query string) (*sqlx.NamedStmt, error) {
+	if tx := uow.GetTx(context.Background()); tx != nil {
+		return tx.PrepareNamed(query)
+	}
 	return d.db.PrepareNamed(query)
 }
 
 // Preparex implements types.Database.
 func (d sqlxDB) Preparex(query string) (*sqlx.Stmt, error) {
+	if tx := uow.GetTx(context.Background()); tx != nil {
+		return tx.Preparex(query)
+	}
 	return d.db.Preparex(query)
 }
 
 // Query implements types.Database.
 func (d sqlxDB) Query(query string, args ...any) (*sql.Rows, error) {
+	if tx := uow.GetTx(context.Background()); tx != nil {
+		return tx.Query(query, args...)
+	}
 	return d.db.Query(query, args...)
 }
 
 // QueryContext implements types.Database.
 func (d sqlxDB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	if tx := uow.GetTx(ctx); tx != nil {
+		return tx.QueryContext(ctx, query, args...)
+	}
 	return d.db.QueryContext(ctx, query, args...)
 }
 
 // QueryRow implements types.Database.
 func (d sqlxDB) QueryRow(query string, args ...any) *sql.Row {
+	if tx := uow.GetTx(context.Background()); tx != nil {
+		return tx.QueryRow(query, args...)
+	}
 	return d.db.QueryRow(query, args...)
 }
 
 // QueryRowContext implements types.Database.
 func (d sqlxDB) QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row {
+	if tx := uow.GetTx(ctx); tx != nil {
+		return tx.QueryRowContext(ctx, query, args...)
+	}
 	return d.db.QueryRowContext(ctx, query, args...)
 }
 
 // QueryRowx implements types.Database.
 func (d sqlxDB) QueryRowx(query string, args ...any) *sqlx.Row {
+	if tx := uow.GetTx(context.Background()); tx != nil {
+		return tx.QueryRowx(query, args...)
+	}
 	return d.db.QueryRowx(query, args...)
 }
 
@@ -137,16 +180,25 @@ func (d sqlxDB) QueryRowxContext(ctx context.Context, query string, args ...any)
 
 // Rebind implements types.Database.
 func (d sqlxDB) Rebind(query string) string {
+	if tx := uow.GetTx(context.Background()); tx != nil {
+		return tx.Rebind(query)
+	}
 	return d.db.Rebind(query)
 }
 
 // Select implements types.Database.
 func (d sqlxDB) Select(dest any, query string, args ...any) error {
+	if tx := uow.GetTx(context.Background()); tx != nil {
+		return tx.Select(dest, query, args...)
+	}
 	return d.db.Select(dest, query, args...)
 }
 
 // SelectContext implements types.Database.
 func (d sqlxDB) SelectContext(ctx context.Context, dest any, query string, args ...any) error {
+	if tx := uow.GetTx(ctx); tx != nil {
+		return tx.SelectContext(ctx, dest, query, args...)
+	}
 	return d.db.SelectContext(ctx, dest, query, args...)
 }
 
