@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"strings"
 )
 
 // CryptService encapsula operações de criptografia
@@ -197,6 +198,51 @@ func GenerateToken(ctx context.Context, key []byte, data []byte) (string, error)
 	mode.CryptBlocks(cipherText, padText)
 
 	return base64.StdEncoding.EncodeToString(cipherText) + "-" + base64.StdEncoding.EncodeToString(iv), nil
+}
+
+func DecryptToken(ctx context.Context, key []byte, token string) ([]byte, error) {
+	parts := strings.Split(token, "-")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("token inválido, formato esperado 'cipher-iv'")
+	}
+
+	cipherText, err := base64.StdEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, fmt.Errorf("erro ao decodificar cipherText: %w", err)
+	}
+
+	iv, err := base64.StdEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("erro ao decodificar IV: %w", err)
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return nil, fmt.Errorf("erro ao criar cipher: %w", err)
+	}
+
+	if len(cipherText)%aes.BlockSize != 0 {
+		return nil, fmt.Errorf("tamanho do cipherText inválido")
+	}
+
+	mode := cipher.NewCBCDecrypter(block, iv)
+	plainText := make([]byte, len(cipherText))
+	mode.CryptBlocks(plainText, cipherText)
+
+	if len(plainText) == 0 {
+		return nil, fmt.Errorf("plaintext vazio após descriptografia")
+	}
+	padding := int(plainText[len(plainText)-1])
+	if padding <= 0 || padding > aes.BlockSize || padding > len(plainText) {
+		return nil, fmt.Errorf("padding PKCS7 inválido")
+	}
+	for i := range padding {
+		if plainText[len(plainText)-1-i] != byte(padding) {
+			return nil, fmt.Errorf("padding PKCS7 inconsistente")
+		}
+	}
+
+	return plainText[:len(plainText)-padding], nil
 }
 
 // Função para gerar padding
