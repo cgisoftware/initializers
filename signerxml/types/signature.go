@@ -12,8 +12,9 @@ type Signature struct {
 
 // SignatureResult represents the result of the signature
 type SignatureResult struct {
-	XMLSigned string    `json:"xml_signed"`
-	Success   bool      `json:"success"`
-	Error     error     `json:"error,omitempty"`
-	Date      time.Time `json:"date"`
+	XMLSigned  string    `json:"xml_signed"`
+	XMLContent string    `json:"xml_content"`
+	Success    bool      `json:"success"`
+	Error      error     `json:"error,omitempty"`
+	Date       time.Time `json:"date"`
 }

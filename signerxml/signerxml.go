@@ -46,10 +46,13 @@ func (a signerXml) GetCertificateInfo(cert types.A1) (types.A1Info, error) {
 }
 
 // SignXML signs an XML document using an A1 PFX certificate following the XMLDSIG standard
-func (a signerXml) SignXML(dados types.Signature) (*types.SignatureResult, error) {
-	resultado := &types.SignatureResult{
-		Date:    time.Now(),
-		Success: false,
+func (a signerXml) SignXML(dados types.Signature) (types.SignatureResult, error) {
+	dados.XMLContent = cleanXML(dados.XMLContent)
+
+	resultado := types.SignatureResult{
+		Date:       time.Now(),
+		Success:    false,
+		XMLContent: dados.XMLContent,
 	}
 
 	// Validate input
@@ -401,4 +404,26 @@ func (a signerXml) ReadPFXCertificate(path string, senha string) (types.A1, erro
 	}
 
 	return cert, nil
+}
+
+func cleanXML(xmlContent string) string {
+	re := regexp.MustCompile(`>\s+<`)
+	xmlContent = re.ReplaceAllString(xmlContent, "><")
+
+	lines := strings.Split(xmlContent, "\n")
+	var sb strings.Builder
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		sb.WriteString(line)
+	}
+	xmlContent = sb.String()
+
+	removerChars := func(r rune) rune {
+		if r == '\t' || r == '\r' {
+			return -1
+		}
+		return r
+	}
+	xmlContent = strings.Map(removerChars, xmlContent)
+	return xmlContent
 }
