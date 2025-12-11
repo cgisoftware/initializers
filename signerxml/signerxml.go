@@ -368,8 +368,8 @@ func (a signerXml) insertSignatureInXML(xmlContent, signature, tagAssinatura str
 // canonicalizeXML applies C14N canonicalization to the XML
 func (a signerXml) canonicalizeXML(xmlContent string) string {
 	canonical := regexp.MustCompile(`>\s+<`).ReplaceAllString(xmlContent, "><")
-	canonical = strings.TrimSpace(canonical)
-	canonical = regexp.MustCompile(`\s+`).ReplaceAllString(canonical, " ")
+	// canonical = strings.TrimSpace(canonical)
+	// canonical = regexp.MustCompile(`\s+`).ReplaceAllString(canonical, " ")
 
 	return canonical
 }
