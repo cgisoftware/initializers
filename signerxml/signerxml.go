@@ -1,4 +1,4 @@
-package signxml
+package signerxml
 
 import (
 	"crypto"
