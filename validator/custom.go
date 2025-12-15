@@ -22,7 +22,7 @@ func validateCPForCNPJ(fl validator.FieldLevel) bool {
 		return validateCNPJ(number)
 	}
 
-	return true
+	return false
 }
 
 func validateCPF(cpf string) bool {
