@@ -406,6 +406,26 @@ func (a signerXml) ReadPFXCertificate(path string, senha string) (types.A1, erro
 	return cert, nil
 }
 
+// readPFXCertificate reads a PFX certificate from a specified directory
+func (a signerXml) ReadPFXCertificateFromBytes(certificadoBytes []byte, senha string) (types.A1, error) {
+	cert := types.A1{
+		File:     certificadoBytes,
+		Password: senha,
+	}
+
+	_, cert1, err := a.extractPfxCertificate(cert)
+	if err != nil {
+		return types.A1{}, fmt.Errorf("error extracting PFX certificate: %v", err)
+	}
+
+	err = a.validateCertificate(cert1)
+	if err != nil {
+		return types.A1{}, fmt.Errorf("error validating certificate: %v", err)
+	}
+
+	return cert, nil
+}
+
 func cleanXML(xmlContent string) string {
 	re := regexp.MustCompile(`>\s+<`)
 	xmlContent = re.ReplaceAllString(xmlContent, "><")
