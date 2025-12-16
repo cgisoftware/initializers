@@ -7,8 +7,10 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"fmt"
+	"os/exec"
 
 	"os"
 	"regexp"
@@ -16,7 +18,7 @@ import (
 	"time"
 
 	"github.com/cgisoftware/initializers/signerxml/types"
-	"software.sslmate.com/src/go-pkcs12"
+	"golang.org/x/crypto/pkcs12"
 )
 
 type signerXml struct{}
@@ -143,7 +145,70 @@ func (a signerXml) validateInput(dados types.Signature) error {
 func (a signerXml) extractPfxCertificate(cert types.A1) (crypto.PrivateKey, *x509.Certificate, error) {
 	privateKey, certificate, err := pkcs12.Decode(cert.File, cert.Password)
 	if err != nil {
+		if strings.Contains(err.Error(), "indefinite length found") {
+			return a.extractPfxCertificateOpenSSL(cert)
+		}
 		return nil, nil, fmt.Errorf("error decoding PFX: %w", err)
+	}
+
+	return privateKey, certificate, nil
+}
+
+func (a signerXml) extractPfxCertificateOpenSSL(cert types.A1) (crypto.PrivateKey, *x509.Certificate, error) {
+	// Create a temporary file for the PFX
+	tmpFile, err := os.CreateTemp("", "cert-*.pfx")
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(cert.File); err != nil {
+		return nil, nil, fmt.Errorf("error writing to temp file: %w", err)
+	}
+	tmpFile.Close()
+
+	// Use OpenSSL to convert PFX to PEM
+	cmd := exec.Command("openssl", "pkcs12", "-in", tmpFile.Name(), "-nodes", "-passin", "pass:"+cert.Password)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, nil, fmt.Errorf("error executing openssl: %v, output: %s", err, string(output))
+	}
+
+	// Parse the PEM output
+	var privateKey crypto.PrivateKey
+	var certificate *x509.Certificate
+
+	var block *pem.Block
+	rest := output
+	for {
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+
+		if block.Type == "CERTIFICATE" {
+			c, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				continue
+			}
+			if certificate == nil {
+				certificate = c
+			}
+		} else if block.Type == "PRIVATE KEY" || block.Type == "RSA PRIVATE KEY" {
+			if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+				privateKey = k
+			} else if k, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+				privateKey = k
+			}
+		}
+	}
+
+	if privateKey == nil {
+		return nil, nil, errors.New("private key not found in PFX file (OpenSSL)")
+	}
+
+	if certificate == nil {
+		return nil, nil, errors.New("certificate not found in PFX file (OpenSSL)")
 	}
 
 	return privateKey, certificate, nil
@@ -377,7 +442,7 @@ func (a signerXml) ReadPFXCertificate(path string, senha string) (types.A1, erro
 }
 
 // readPFXCertificate reads a PFX certificate from a specified directory
-func (a signerXml) ReadPFXCertificateFromBytes(certificadoBytes []byte, senha string) (types.A1, error) {
+func (a signerXml) ReadPFXCertificateFromBytes(certificadoBytes []byte, senha string) (*x509.Certificate, error) {
 	cert := types.A1{
 		File:     certificadoBytes,
 		Password: senha,
@@ -385,15 +450,15 @@ func (a signerXml) ReadPFXCertificateFromBytes(certificadoBytes []byte, senha st
 
 	_, cert1, err := a.extractPfxCertificate(cert)
 	if err != nil {
-		return types.A1{}, fmt.Errorf("error extracting PFX certificate: %v", err)
+		return nil, fmt.Errorf("error extracting PFX certificate: %v", err)
 	}
 
 	err = a.validateCertificate(cert1)
 	if err != nil {
-		return types.A1{}, fmt.Errorf("error validating certificate: %v", err)
+		return nil, fmt.Errorf("error validating certificate: %v", err)
 	}
 
-	return cert, nil
+	return cert1, nil
 }
 
 func cleanXML(xmlContent string) string {
