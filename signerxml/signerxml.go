@@ -156,7 +156,18 @@ func (a signerXml) extractPfxCertificateOpenSSL(cert types.A1) (crypto.PrivateKe
 	cmd := exec.Command("openssl", "pkcs12", "-in", tmpFile.Name(), "-nodes", "-passin", "pass:"+cert.Password)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, nil, fmt.Errorf("error executing openssl: %v, output: %s", err, string(output))
+		// Check for OpenSSL 3.0 legacy algorithm error (RC2-40-CBC, etc.)
+		if strings.Contains(string(output), "unsupported") || strings.Contains(string(output), "error:0308010C") {
+			// Retry with -legacy flag
+			cmd = exec.Command("openssl", "pkcs12", "-legacy", "-in", tmpFile.Name(), "-nodes", "-passin", "pass:"+cert.Password)
+			var errLegacy error
+			output, errLegacy = cmd.CombinedOutput()
+			if errLegacy != nil {
+				return nil, nil, fmt.Errorf("error executing openssl (with legacy): %v, output: %s", errLegacy, string(output))
+			}
+		} else {
+			return nil, nil, fmt.Errorf("error executing openssl: %v, output: %s", err, string(output))
+		}
 	}
 
 	// Parse the PEM output
