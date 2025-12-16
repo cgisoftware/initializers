@@ -141,39 +141,9 @@ func (a signerXml) validateInput(dados types.Signature) error {
 }
 
 func (a signerXml) extractPfxCertificate(cert types.A1) (crypto.PrivateKey, *x509.Certificate, error) {
-	blocks, err := pkcs12.ToPEM(cert.File, cert.Password)
+	privateKey, certificate, err := pkcs12.Decode(cert.File, cert.Password)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error decoding PFX (ToPEM): %w", err)
-	}
-
-	var privateKey crypto.PrivateKey
-	var certificate *x509.Certificate
-
-	for _, block := range blocks {
-		if block.Type == "CERTIFICATE" {
-			c, err := x509.ParseCertificate(block.Bytes)
-			if err != nil {
-				continue
-			}
-			// Assume the first certificate found or improve logic to find the leaf
-			if certificate == nil {
-				certificate = c
-			}
-		} else if block.Type == "PRIVATE KEY" || block.Type == "RSA PRIVATE KEY" {
-			if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
-				privateKey = k
-			} else if k, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
-				privateKey = k
-			}
-		}
-	}
-
-	if privateKey == nil {
-		return nil, nil, errors.New("private key not found in PFX file")
-	}
-
-	if certificate == nil {
-		return nil, nil, errors.New("certificate not found in PFX file")
+		return nil, nil, fmt.Errorf("error decoding PFX: %w", err)
 	}
 
 	return privateKey, certificate, nil
