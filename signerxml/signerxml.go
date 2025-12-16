@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/cgisoftware/initializers/signerxml/types"
-	"golang.org/x/crypto/pkcs12"
+	"software.sslmate.com/src/go-pkcs12"
 )
 
 type signerXml struct{}
