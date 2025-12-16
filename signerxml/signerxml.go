@@ -29,19 +29,14 @@ func NewSignerXml() signerXml {
 }
 
 // GetCertificateInfo extracts information from the PFX certificate
-func (a signerXml) GetCertificateInfo(cert types.A1) (types.A1Info, error) {
-	_, certificate, err := a.extractPfxCertificate(cert)
-	if err != nil {
-		return types.A1Info{}, err
-	}
-
+func (a signerXml) GetCertificateInfo(cert *x509.Certificate) (types.A1Info, error) {
 	info := types.A1Info{
-		Subject:      certificate.Subject.String(),
-		Issuer:       certificate.Issuer.String(),
-		SerialNumber: certificate.SerialNumber.String(),
-		NotBefore:    certificate.NotBefore,
-		NotAfter:     certificate.NotAfter,
-		Certificate:  certificate,
+		Subject:      cert.Subject.String(),
+		Issuer:       cert.Issuer.String(),
+		SerialNumber: cert.SerialNumber.String(),
+		NotBefore:    cert.NotBefore,
+		NotAfter:     cert.NotAfter,
+		Certificate:  cert,
 	}
 
 	return info, nil
@@ -63,15 +58,8 @@ func (a signerXml) SignXML(dados types.Signature) (types.SignatureResult, error)
 		return resultado, err
 	}
 
-	// Extract certificate and private key from PFX
-	privateKey, cert, err := a.extractPfxCertificate(dados.Certificate)
-	if err != nil {
-		resultado.Error = fmt.Errorf("Error extracting PFX certificate: %v", err)
-		return resultado, err
-	}
-
 	// Validate certificate
-	if err := a.validateCertificate(cert); err != nil {
+	if err := a.validateCertificate(dados.Certificate); err != nil {
 		resultado.Error = fmt.Errorf("Invalid certificate: %v", err)
 		return resultado, err
 
@@ -103,14 +91,14 @@ func (a signerXml) SignXML(dados types.Signature) (types.SignatureResult, error)
 	signedInfo = a.canonicalizeXML(signedInfo)
 
 	// Sign SignedInfo
-	assinatura, err := a.signSignedInfo(signedInfo, privateKey)
+	assinatura, err := a.signSignedInfo(signedInfo, dados.PrivateKey)
 	if err != nil {
 		resultado.Error = fmt.Errorf("Error signing: %v", err)
 		return resultado, err
 	}
 
 	// Create complete Signature element
-	signature, err := a.createElementSignature(signedInfo, assinatura, cert)
+	signature, err := a.createElementSignature(signedInfo, assinatura, dados.Certificate)
 	if err != nil {
 		resultado.Error = fmt.Errorf("Error creating Signature element: %v", err)
 		return resultado, err
@@ -133,11 +121,8 @@ func (a signerXml) validateInput(dados types.Signature) error {
 	if strings.TrimSpace(dados.XMLContent) == "" {
 		return errors.New("XML content cannot be empty")
 	}
-	if len(dados.Certificate.File) == 0 {
+	if len(dados.Certificate.Raw) == 0 {
 		return errors.New("certificate file cannot be empty")
-	}
-	if strings.TrimSpace(dados.Certificate.Password) == "" {
-		return errors.New("certificate password cannot be empty")
 	}
 	return nil
 }
@@ -442,23 +427,23 @@ func (a signerXml) ReadPFXCertificate(path string, senha string) (types.A1, erro
 }
 
 // readPFXCertificate reads a PFX certificate from a specified directory
-func (a signerXml) ReadPFXCertificateFromBytes(certificadoBytes []byte, senha string) (*x509.Certificate, error) {
+func (a signerXml) ReadPFXCertificateFromBytes(certificadoBytes []byte, senha string) (crypto.PrivateKey, *x509.Certificate, error) {
 	cert := types.A1{
 		File:     certificadoBytes,
 		Password: senha,
 	}
 
-	_, cert1, err := a.extractPfxCertificate(cert)
+	privateKey, cert1, err := a.extractPfxCertificate(cert)
 	if err != nil {
-		return nil, fmt.Errorf("error extracting PFX certificate: %v", err)
+		return nil, nil, fmt.Errorf("error extracting PFX certificate: %v", err)
 	}
 
 	err = a.validateCertificate(cert1)
 	if err != nil {
-		return nil, fmt.Errorf("error validating certificate: %v", err)
+		return nil, nil, fmt.Errorf("error validating certificate: %v", err)
 	}
 
-	return cert1, nil
+	return privateKey, cert1, nil
 }
 
 func cleanXML(xmlContent string) string {
