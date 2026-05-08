@@ -237,6 +237,19 @@ func (a *Authenticator) Sign(claims CustomClaims, expireIn time.Duration) (strin
 	}
 }
 
+// Verify valida um token JWT e retorna os dados dos claims se válido.
+// Útil para verificar manualmente um token fora do contexto HTTP (ex: refresh token).
+//
+//	data, ok := a.Verify(tokenString)
+//	cpf, _ := data["cpf"].(string)
+func (a *Authenticator) Verify(tokenString string) (map[ContextValue]any, bool) {
+	claims, ok := a.verifyJWTToken(tokenString)
+	if !ok {
+		return nil, false
+	}
+	return claims.Data, true
+}
+
 // JWKSHandler retorna um [http.Handler] que expõe a public key RSA no formato JWKS.
 // Registre em /.well-known/jwks.json para que backends busquem a chave automaticamente.
 // Retorna 404 se o Authenticator não foi criado com [NewRSA] ou [NewRSAVerifier].
