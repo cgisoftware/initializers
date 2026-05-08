@@ -51,13 +51,24 @@ package auth
 
 import (
 	"context"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"fmt"
+	"math/big"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+)
+
+type signingMethod int
+
+const (
+	signingMethodHMAC signingMethod = iota
+	signingMethodRSA
 )
 
 // ContextValue é o tipo das chaves usadas para armazenar e recuperar valores do contexto HTTP.
@@ -131,9 +142,12 @@ func WithCryptService(svc CryptService) Option {
 }
 
 // Authenticator gerencia a autenticação JWT e Basic Auth.
-// Crie uma instância com [New].
+// Crie uma instância com [New], [NewRSA] ou [NewRSAVerifier].
 type Authenticator struct {
 	secretKey          []byte
+	privateKey         *rsa.PrivateKey
+	publicKey          *rsa.PublicKey
+	sigMethod          signingMethod
 	cookieName         string
 	basicAuthValidator func(clientID, secret string) bool
 	cryptService       CryptService
@@ -145,7 +159,7 @@ type internalClaims struct {
 	jwt.RegisteredClaims
 }
 
-// New cria um [Authenticator] com a chave secreta e as opções fornecidas.
+// New cria um [Authenticator] HMAC-SHA256 com a chave secreta e as opções fornecidas.
 //
 //	a := auth.New("minha-chave-secreta",
 //	    auth.WithCookieName("SESSION"),
@@ -154,6 +168,7 @@ type internalClaims struct {
 func New(secretKey string, opts ...Option) *Authenticator {
 	a := &Authenticator{
 		secretKey: []byte(secretKey),
+		sigMethod: signingMethodHMAC,
 	}
 	for _, opt := range opts {
 		opt(a)
@@ -161,8 +176,44 @@ func New(secretKey string, opts ...Option) *Authenticator {
 	return a
 }
 
+// NewRSA cria um [Authenticator] RS256 para o emissor do token (assina + valida).
+// privateKeyPEM e publicKeyPEM devem ser chaves PEM (PKCS8 ou PKCS1/PKIX).
+//
+//	a, err := auth.NewRSA(os.Getenv("RSA_PRIVATE_KEY"), os.Getenv("RSA_PUBLIC_KEY"))
+func NewRSA(privateKeyPEM, publicKeyPEM string, opts ...Option) (*Authenticator, error) {
+	priv, err := parseRSAPrivateKey(privateKeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("private key: %w", err)
+	}
+	pub, err := parseRSAPublicKey(publicKeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("public key: %w", err)
+	}
+	a := &Authenticator{privateKey: priv, publicKey: pub, sigMethod: signingMethodRSA}
+	for _, opt := range opts {
+		opt(a)
+	}
+	return a, nil
+}
+
+// NewRSAVerifier cria um [Authenticator] RS256 para backends que só validam tokens.
+// Não requer a private key — apenas a public key é necessária.
+//
+//	a, err := auth.NewRSAVerifier(os.Getenv("RSA_PUBLIC_KEY"))
+func NewRSAVerifier(publicKeyPEM string, opts ...Option) (*Authenticator, error) {
+	pub, err := parseRSAPublicKey(publicKeyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("public key: %w", err)
+	}
+	a := &Authenticator{publicKey: pub, sigMethod: signingMethodRSA}
+	for _, opt := range opts {
+		opt(a)
+	}
+	return a, nil
+}
+
 // Sign gera e assina um token JWT com os claims fornecidos e o tempo de expiração.
-// O token é assinado com HMAC-SHA256 usando a chave configurada em [New].
+// Usa HMAC-SHA256 se criado com [New], ou RS256 se criado com [NewRSA].
 //
 //	token, err := a.Sign(UserClaims{UserID: 1, Role: "admin"}, 24*time.Hour)
 func (a *Authenticator) Sign(claims CustomClaims, expireIn time.Duration) (string, error) {
@@ -173,13 +224,35 @@ func (a *Authenticator) Sign(claims CustomClaims, expireIn time.Duration) (strin
 		},
 	}
 
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, internal)
-	tokenString, err := token.SignedString(a.secretKey)
-	if err != nil {
-		return "", err
+	switch a.sigMethod {
+	case signingMethodRSA:
+		if a.privateKey == nil {
+			return "", fmt.Errorf("private key não configurada: use NewRSA para assinar tokens")
+		}
+		token := jwt.NewWithClaims(jwt.SigningMethodRS256, internal)
+		return token.SignedString(a.privateKey)
+	default:
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, internal)
+		return token.SignedString(a.secretKey)
 	}
+}
 
-	return tokenString, nil
+// JWKSHandler retorna um [http.Handler] que expõe a public key RSA no formato JWKS.
+// Registre em /.well-known/jwks.json para que backends busquem a chave automaticamente.
+// Retorna 404 se o Authenticator não foi criado com [NewRSA] ou [NewRSAVerifier].
+//
+//	r.Get("/.well-known/jwks.json", a.JWKSHandler().ServeHTTP)
+func (a *Authenticator) JWKSHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if a.publicKey == nil || a.sigMethod != signingMethodRSA {
+			http.Error(w, "not configured for RSA", http.StatusNotFound)
+			return
+		}
+		n := base64.RawURLEncoding.EncodeToString(a.publicKey.N.Bytes())
+		e := base64.RawURLEncoding.EncodeToString(big.NewInt(int64(a.publicKey.E)).Bytes())
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"keys":[{"kty":"RSA","alg":"RS256","use":"sig","n":%q,"e":%q}]}`, n, e)
+	})
 }
 
 // Middleware retorna um middleware HTTP que autentica a requisição e injeta
@@ -298,10 +371,18 @@ func (a *Authenticator) verifyJWTToken(tokenString string) (*internalClaims, boo
 	claims := &internalClaims{}
 
 	token, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (any, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("algoritmo de assinatura inesperado: %v", token.Header["alg"])
+		switch a.sigMethod {
+		case signingMethodRSA:
+			if _, ok := token.Method.(*jwt.SigningMethodRSA); !ok {
+				return nil, fmt.Errorf("algoritmo de assinatura inesperado: %v", token.Header["alg"])
+			}
+			return a.publicKey, nil
+		default:
+			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("algoritmo de assinatura inesperado: %v", token.Header["alg"])
+			}
+			return a.secretKey, nil
 		}
-		return a.secretKey, nil
 	})
 
 	if err != nil || !token.Valid || claims.ExpiresAt == nil {
@@ -309,6 +390,36 @@ func (a *Authenticator) verifyJWTToken(tokenString string) (*internalClaims, boo
 	}
 
 	return claims, true
+}
+
+func parseRSAPrivateKey(pemStr string) (*rsa.PrivateKey, error) {
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, fmt.Errorf("falha ao decodificar bloco PEM")
+	}
+	if key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+		if rsaKey, ok := key.(*rsa.PrivateKey); ok {
+			return rsaKey, nil
+		}
+		return nil, fmt.Errorf("não é uma chave RSA")
+	}
+	return x509.ParsePKCS1PrivateKey(block.Bytes)
+}
+
+func parseRSAPublicKey(pemStr string) (*rsa.PublicKey, error) {
+	block, _ := pem.Decode([]byte(pemStr))
+	if block == nil {
+		return nil, fmt.Errorf("falha ao decodificar bloco PEM")
+	}
+	key, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	rsaKey, ok := key.(*rsa.PublicKey)
+	if !ok {
+		return nil, fmt.Errorf("não é uma chave RSA pública")
+	}
+	return rsaKey, nil
 }
 
 // extractToken separa o tipo do token do valor
