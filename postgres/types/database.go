@@ -37,4 +37,6 @@ type Database interface {
 	BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error)
 	BeginTxx(ctx context.Context, opts *sql.TxOptions) (*sqlx.Tx, error)
 	Begin() (*sql.Tx, error)
+	Close() error
+	Stats() sql.DBStats
 }

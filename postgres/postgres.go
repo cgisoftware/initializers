@@ -3,9 +3,9 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
-	"log"
-	"os"
+	"sync"
 	"time"
 
 	"github.com/cgisoftware/initializers/postgres/types"
@@ -44,10 +44,10 @@ func (d sqlxDB) DriverName() string {
 }
 
 // Exec implements types.Database.
+//
+// Não participa de uow.WithTransaction: sem um context.Context real não há como
+// recuperar a transação ativa. Use ExecContext dentro de uma unit of work.
 func (d sqlxDB) Exec(query string, args ...any) (sql.Result, error) {
-	if tx := uow.GetTx(context.Background()); tx != nil {
-		return tx.Exec(query, args...)
-	}
 	return d.db.Exec(query, args...)
 }
 
@@ -60,10 +60,9 @@ func (d sqlxDB) ExecContext(ctx context.Context, query string, args ...any) (sql
 }
 
 // Get implements types.Database.
+//
+// Não participa de uow.WithTransaction: use GetContext dentro de uma unit of work.
 func (d sqlxDB) Get(dest any, query string, args ...any) error {
-	if tx := uow.GetTx(context.Background()); tx != nil {
-		return tx.Get(dest, query, args...)
-	}
 	return d.db.Get(dest, query, args...)
 }
 
@@ -76,10 +75,9 @@ func (d sqlxDB) GetContext(ctx context.Context, dest any, query string, args ...
 }
 
 // NamedExec implements types.Database.
+//
+// Não participa de uow.WithTransaction: use NamedExecContext dentro de uma unit of work.
 func (d sqlxDB) NamedExec(query string, arg any) (sql.Result, error) {
-	if tx := uow.GetTx(context.Background()); tx != nil {
-		return tx.NamedExec(query, arg)
-	}
 	return d.db.NamedExec(query, arg)
 }
 
@@ -92,15 +90,17 @@ func (d sqlxDB) NamedExecContext(ctx context.Context, query string, arg any) (sq
 }
 
 // NamedQuery implements types.Database.
+//
+// Não participa de uow.WithTransaction: use NamedQueryContext dentro de uma unit of work.
 func (d sqlxDB) NamedQuery(query string, arg any) (*sqlx.Rows, error) {
-	if tx := uow.GetTx(context.Background()); tx != nil {
-		return tx.NamedQuery(query, arg)
-	}
 	return d.db.NamedQuery(query, arg)
 }
 
 // NamedQueryContext implements types.Database.
 func (d sqlxDB) NamedQueryContext(ctx context.Context, query string, arg any) (*sqlx.Rows, error) {
+	if tx := uow.GetTx(ctx); tx != nil {
+		return tx.NamedQuery(query, arg)
+	}
 	return d.db.NamedQueryContext(ctx, query, arg)
 }
 
@@ -115,26 +115,25 @@ func (d sqlxDB) PingContext(ctx context.Context) error {
 }
 
 // PrepareNamed implements types.Database.
+//
+// Não participa de uow.WithTransaction: statements preparados fora de contexto não
+// têm como amarrar a uma transação ativa.
 func (d sqlxDB) PrepareNamed(query string) (*sqlx.NamedStmt, error) {
-	if tx := uow.GetTx(context.Background()); tx != nil {
-		return tx.PrepareNamed(query)
-	}
 	return d.db.PrepareNamed(query)
 }
 
 // Preparex implements types.Database.
+//
+// Não participa de uow.WithTransaction: statements preparados fora de contexto não
+// têm como amarrar a uma transação ativa.
 func (d sqlxDB) Preparex(query string) (*sqlx.Stmt, error) {
-	if tx := uow.GetTx(context.Background()); tx != nil {
-		return tx.Preparex(query)
-	}
 	return d.db.Preparex(query)
 }
 
 // Query implements types.Database.
+//
+// Não participa de uow.WithTransaction: use QueryContext dentro de uma unit of work.
 func (d sqlxDB) Query(query string, args ...any) (*sql.Rows, error) {
-	if tx := uow.GetTx(context.Background()); tx != nil {
-		return tx.Query(query, args...)
-	}
 	return d.db.Query(query, args...)
 }
 
@@ -147,10 +146,9 @@ func (d sqlxDB) QueryContext(ctx context.Context, query string, args ...any) (*s
 }
 
 // QueryRow implements types.Database.
+//
+// Não participa de uow.WithTransaction: use QueryRowContext dentro de uma unit of work.
 func (d sqlxDB) QueryRow(query string, args ...any) *sql.Row {
-	if tx := uow.GetTx(context.Background()); tx != nil {
-		return tx.QueryRow(query, args...)
-	}
 	return d.db.QueryRow(query, args...)
 }
 
@@ -163,10 +161,9 @@ func (d sqlxDB) QueryRowContext(ctx context.Context, query string, args ...any) 
 }
 
 // QueryRowx implements types.Database.
+//
+// Não participa de uow.WithTransaction: use QueryRowxContext dentro de uma unit of work.
 func (d sqlxDB) QueryRowx(query string, args ...any) *sqlx.Row {
-	if tx := uow.GetTx(context.Background()); tx != nil {
-		return tx.QueryRowx(query, args...)
-	}
 	return d.db.QueryRowx(query, args...)
 }
 
@@ -180,17 +177,13 @@ func (d sqlxDB) QueryRowxContext(ctx context.Context, query string, args ...any)
 
 // Rebind implements types.Database.
 func (d sqlxDB) Rebind(query string) string {
-	if tx := uow.GetTx(context.Background()); tx != nil {
-		return tx.Rebind(query)
-	}
 	return d.db.Rebind(query)
 }
 
 // Select implements types.Database.
+//
+// Não participa de uow.WithTransaction: use SelectContext dentro de uma unit of work.
 func (d sqlxDB) Select(dest any, query string, args ...any) error {
-	if tx := uow.GetTx(context.Background()); tx != nil {
-		return tx.Select(dest, query, args...)
-	}
 	return d.db.Select(dest, query, args...)
 }
 
@@ -202,6 +195,16 @@ func (d sqlxDB) SelectContext(ctx context.Context, dest any, query string, args 
 	return d.db.SelectContext(ctx, dest, query, args...)
 }
 
+// Close implements types.Database.
+func (d sqlxDB) Close() error {
+	return d.db.Close()
+}
+
+// Stats implements types.Database.
+func (d sqlxDB) Stats() sql.DBStats {
+	return d.db.Stats()
+}
+
 type DatabaseClientConfig struct {
 	databaseURL     string
 	context         context.Context
@@ -209,6 +212,7 @@ type DatabaseClientConfig struct {
 	maxIdleConns    int
 	connMaxLifetime time.Duration
 	runMigrations   bool
+	migrationsPath  string
 }
 
 type DatabaseOption func(d *DatabaseClientConfig)
@@ -237,13 +241,57 @@ func WithMigrations(value bool) DatabaseOption {
 	}
 }
 
-// Initialize retorna um pool de conexões com o banco de dados
-func Initialize(ctx context.Context, databaseURL string, opts ...DatabaseOption) types.Database {
+func WithMigrationsPath(path string) DatabaseOption {
+	return func(c *DatabaseClientConfig) {
+		c.migrationsPath = path
+	}
+}
+
+// ShutdownFunc encerra o pool de conexões de forma graciosa: aguarda as queries
+// em andamento terminarem (comportamento nativo de sql.DB.Close()), mas respeita
+// o cancelamento/timeout do ctx recebido, retornando um erro envolvendo ctx.Err()
+// caso o fechamento demore mais que o prazo concedido.
+//
+// É idempotente e segura para chamadas concorrentes: apenas a primeira chamada
+// efetivamente fecha o pool; as demais recebem o mesmo resultado sem duplicar o
+// Close(). Isso evita problemas quando o shutdown é acionado tanto por um defer
+// quanto por um handler de sinal (SIGINT/SIGTERM), por exemplo.
+type ShutdownFunc func(ctx context.Context) error
+
+func newShutdownFunc(db types.Database) ShutdownFunc {
+	var (
+		once        sync.Once
+		shutdownErr error
+	)
+
+	return func(ctx context.Context) error {
+		once.Do(func() {
+			closed := make(chan error, 1)
+			go func() {
+				closed <- db.Close()
+			}()
+
+			select {
+			case err := <-closed:
+				shutdownErr = err
+			case <-ctx.Done():
+				shutdownErr = fmt.Errorf("shutdown: tempo esgotado aguardando conexões em uso: %w", ctx.Err())
+			}
+		})
+		return shutdownErr
+	}
+}
+
+// Initialize retorna um pool de conexões com o banco de dados e uma ShutdownFunc
+// para ser chamada no encerramento gracioso da aplicação (tipicamente a partir de
+// um handler de SIGINT/SIGTERM).
+func Initialize(ctx context.Context, databaseURL string, opts ...DatabaseOption) (types.Database, ShutdownFunc, error) {
 	databaseOptions := &DatabaseClientConfig{
 		maxOpenConns:    25,
 		maxIdleConns:    10,
-		connMaxLifetime: 4,
+		connMaxLifetime: 5 * time.Minute,
 		runMigrations:   true,
+		migrationsPath:  "file://database/migrations",
 		context:         ctx,
 		databaseURL:     databaseURL,
 	}
@@ -252,10 +300,8 @@ func Initialize(ctx context.Context, databaseURL string, opts ...DatabaseOption)
 	}
 
 	db, err := sqlx.ConnectContext(databaseOptions.context, "postgres", databaseOptions.databaseURL)
-
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Unable to connect to database: %v\n", err)
-		os.Exit(1)
+		return nil, nil, fmt.Errorf("unable to connect to database: %w", err)
 	}
 
 	db.DB.SetMaxOpenConns(databaseOptions.maxOpenConns)
@@ -263,23 +309,27 @@ func Initialize(ctx context.Context, databaseURL string, opts ...DatabaseOption)
 	db.DB.SetConnMaxLifetime(databaseOptions.connMaxLifetime)
 
 	if databaseOptions.runMigrations {
-		runMigrations(databaseOptions.databaseURL)
+		if err := runMigrations(databaseOptions.databaseURL, databaseOptions.migrationsPath); err != nil {
+			return nil, nil, fmt.Errorf("unable to run migrations: %w", err)
+		}
 	}
 
 	database := sqlxDB{db}
 
 	uow.SetGlobalDB(database)
 
-	return database
+	return database, newShutdownFunc(database), nil
 }
 
-func runMigrations(databaseURL string) {
-	m, err := migrate.New("file://database/migrations", databaseURL)
+func runMigrations(databaseURL, migrationsPath string) error {
+	m, err := migrate.New(migrationsPath, databaseURL)
 	if err != nil {
-		log.Println(err)
+		return err
 	}
 
-	if err := m.Up(); err != nil {
-		log.Println(err)
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return err
 	}
+
+	return nil
 }

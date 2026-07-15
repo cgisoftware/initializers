@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os/signal"
+	"syscall"
 	"time"
-
-	"github.com/jmoiron/sqlx"
 )
 
 // User representa um usuário para exemplos
@@ -34,12 +34,15 @@ func ExampleBasicInitialization() {
 	databaseURL := "postgres://user:password@localhost:5432/dbname?sslmode=disable"
 
 	// Inicialização básica
-	db := Initialize(ctx, databaseURL)
-	defer db.(*sqlx.DB).Close()
+	db, shutdown, err := Initialize(ctx, databaseURL)
+	if err != nil {
+		log.Printf("Erro ao inicializar banco: %v", err)
+		return
+	}
+	defer shutdown(context.Background())
 
 	// Testar conexão
-	err := db.Ping()
-	if err != nil {
+	if err := db.Ping(); err != nil {
 		log.Printf("Erro ao conectar: %v", err)
 		return
 	}
@@ -54,13 +57,17 @@ func ExampleInitializationWithOptions() {
 	databaseURL := "postgres://user:password@localhost:5432/dbname?sslmode=disable"
 
 	// Inicialização com opções customizadas
-	db := Initialize(ctx, databaseURL,
+	db, shutdown, err := Initialize(ctx, databaseURL,
 		WithMaxOpenConns(25),
 		WithMaxIdleConns(5),
 		WithConnMaxLifetime(30*time.Minute),
 		WithMigrations(true),
 	)
-	defer db.(*sqlx.DB).Close()
+	if err != nil {
+		log.Printf("Erro ao inicializar banco: %v", err)
+		return
+	}
+	defer shutdown(context.Background())
 
 	fmt.Println("=== CONFIGURAÇÃO AVANÇADA ===")
 	fmt.Println("✓ Banco inicializado com configurações customizadas:")
@@ -69,14 +76,12 @@ func ExampleInitializationWithOptions() {
 	fmt.Println("  - Connection Max Lifetime: 30 minutos")
 	fmt.Println("  - Migrations: Habilitadas")
 
-	// Verificar configurações (se usando *sqlx.DB)
-	if sqlxDB, ok := db.(*sqlx.DB); ok {
-		stats := sqlxDB.Stats()
-		fmt.Printf("\nEstatísticas atuais:\n")
-		fmt.Printf("  - Conexões abertas: %d\n", stats.OpenConnections)
-		fmt.Printf("  - Conexões em uso: %d\n", stats.InUse)
-		fmt.Printf("  - Conexões idle: %d\n", stats.Idle)
-	}
+	// Verificar configurações
+	stats := db.Stats()
+	fmt.Printf("\nEstatísticas atuais:\n")
+	fmt.Printf("  - Conexões abertas: %d\n", stats.OpenConnections)
+	fmt.Printf("  - Conexões em uso: %d\n", stats.InUse)
+	fmt.Printf("  - Conexões idle: %d\n", stats.Idle)
 }
 
 // ExampleBasicQueries demonstra consultas básicas
@@ -84,8 +89,12 @@ func ExampleBasicQueries() {
 	ctx := context.Background()
 	databaseURL := "postgres://user:password@localhost:5432/dbname?sslmode=disable"
 
-	db := Initialize(ctx, databaseURL)
-	defer db.(*sqlx.DB).Close()
+	db, shutdown, err := Initialize(ctx, databaseURL)
+	if err != nil {
+		log.Printf("Erro ao inicializar banco: %v", err)
+		return
+	}
+	defer shutdown(context.Background())
 
 	fmt.Println("=== CONSULTAS BÁSICAS ===")
 
@@ -121,20 +130,24 @@ func ExampleCRUDOperations() {
 	ctx := context.Background()
 	databaseURL := "postgres://user:password@localhost:5432/dbname?sslmode=disable"
 
-	db := Initialize(ctx, databaseURL)
-	defer db.(*sqlx.DB).Close()
+	db, shutdown, err := Initialize(ctx, databaseURL)
+	if err != nil {
+		log.Printf("Erro ao inicializar banco: %v", err)
+		return
+	}
+	defer shutdown(context.Background())
 
 	fmt.Println("=== OPERAÇÕES CRUD ===")
 
 	// CREATE - Inserir usuário
 	insertSQL := `
-		INSERT INTO users (name, email, created_at, updated_at) 
-		VALUES ($1, $2, $3, $4) 
+		INSERT INTO users (name, email, created_at, updated_at)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id`
 
 	now := time.Now()
 	var userID int
-	err := db.QueryRowContext(ctx, insertSQL, "João Silva", "joao@exemplo.com", now, now).Scan(&userID)
+	err = db.QueryRowContext(ctx, insertSQL, "João Silva", "joao@exemplo.com", now, now).Scan(&userID)
 	if err != nil {
 		log.Printf("Erro ao inserir usuário: %v", err)
 		return
@@ -177,8 +190,12 @@ func ExampleBatchOperations() {
 	ctx := context.Background()
 	databaseURL := "postgres://user:password@localhost:5432/dbname?sslmode=disable"
 
-	db := Initialize(ctx, databaseURL)
-	defer db.(*sqlx.DB).Close()
+	db, shutdown, err := Initialize(ctx, databaseURL)
+	if err != nil {
+		log.Printf("Erro ao inicializar banco: %v", err)
+		return
+	}
+	defer shutdown(context.Background())
 
 	fmt.Println("=== OPERAÇÕES EM LOTE ===")
 
@@ -225,13 +242,17 @@ func ExampleTransactions() {
 	ctx := context.Background()
 	databaseURL := "postgres://user:password@localhost:5432/dbname?sslmode=disable"
 
-	db := Initialize(ctx, databaseURL)
-	defer db.(*sqlx.DB).Close()
+	db, shutdown, err := Initialize(ctx, databaseURL)
+	if err != nil {
+		log.Printf("Erro ao inicializar banco: %v", err)
+		return
+	}
+	defer shutdown(context.Background())
 
 	fmt.Println("=== TRANSAÇÕES ===")
 
 	// Iniciar transação
-	tx, err := db.(*sqlx.DB).BeginTxx(ctx, nil)
+	tx, err := db.BeginTxx(ctx, nil)
 	if err != nil {
 		log.Printf("Erro ao iniciar transação: %v", err)
 		return
@@ -288,8 +309,12 @@ func ExampleNamedQueries() {
 	ctx := context.Background()
 	databaseURL := "postgres://user:password@localhost:5432/dbname?sslmode=disable"
 
-	db := Initialize(ctx, databaseURL)
-	defer db.(*sqlx.DB).Close()
+	db, shutdown, err := Initialize(ctx, databaseURL)
+	if err != nil {
+		log.Printf("Erro ao inicializar banco: %v", err)
+		return
+	}
+	defer shutdown(context.Background())
 
 	fmt.Println("=== NAMED QUERIES ===")
 
@@ -326,7 +351,7 @@ func ExampleNamedQueries() {
 
 	var foundUser User
 	query := "SELECT id, name, email, created_at, updated_at FROM users WHERE email = :email"
-	nrows, err := db.(*sqlx.DB).NamedQuery(query, params)
+	nrows, err := db.NamedQuery(query, params)
 	if err != nil {
 		log.Printf("Erro na named query de busca: %v", err)
 		return
@@ -348,28 +373,30 @@ func ExampleConnectionPooling() {
 	ctx := context.Background()
 	databaseURL := "postgres://user:password@localhost:5432/dbname?sslmode=disable"
 
-	db := Initialize(ctx, databaseURL,
+	db, shutdown, err := Initialize(ctx, databaseURL,
 		WithMaxOpenConns(10),
 		WithMaxIdleConns(3),
 		WithConnMaxLifetime(5*time.Minute),
 	)
-	defer db.(*sqlx.DB).Close()
+	if err != nil {
+		log.Printf("Erro ao inicializar banco: %v", err)
+		return
+	}
+	defer shutdown(context.Background())
 
 	fmt.Println("=== MONITORAMENTO DO POOL ===")
 
 	// Função para mostrar estatísticas
 	showStats := func(label string) {
-		if sqlxDB, ok := db.(*sqlx.DB); ok {
-			stats := sqlxDB.Stats()
-			fmt.Printf("%s:\n", label)
-			fmt.Printf("  Max Open: %d\n", stats.MaxOpenConnections)
-			fmt.Printf("  Open: %d\n", stats.OpenConnections)
-			fmt.Printf("  In Use: %d\n", stats.InUse)
-			fmt.Printf("  Idle: %d\n", stats.Idle)
-			fmt.Printf("  Wait Count: %d\n", stats.WaitCount)
-			fmt.Printf("  Wait Duration: %v\n", stats.WaitDuration)
-			fmt.Println()
-		}
+		stats := db.Stats()
+		fmt.Printf("%s:\n", label)
+		fmt.Printf("  Max Open: %d\n", stats.MaxOpenConnections)
+		fmt.Printf("  Open: %d\n", stats.OpenConnections)
+		fmt.Printf("  In Use: %d\n", stats.InUse)
+		fmt.Printf("  Idle: %d\n", stats.Idle)
+		fmt.Printf("  Wait Count: %d\n", stats.WaitCount)
+		fmt.Printf("  Wait Duration: %v\n", stats.WaitDuration)
+		fmt.Println()
 	}
 
 	showStats("Estado inicial")
@@ -396,13 +423,17 @@ func ExampleErrorHandling() {
 	ctx := context.Background()
 	databaseURL := "postgres://user:password@localhost:5432/dbname?sslmode=disable"
 
-	db := Initialize(ctx, databaseURL)
-	defer db.(*sqlx.DB).Close()
+	db, shutdown, err := Initialize(ctx, databaseURL)
+	if err != nil {
+		log.Printf("Erro ao inicializar banco: %v", err)
+		return
+	}
+	defer shutdown(context.Background())
 
 	fmt.Println("=== TRATAMENTO DE ERROS ===")
 
 	// Erro de sintaxe SQL
-	_, err := db.Query("SELECT * FORM invalid_table") // FORM em vez de FROM
+	_, err = db.Query("SELECT * FORM invalid_table") // FORM em vez de FROM
 	if err != nil {
 		fmt.Printf("✓ Erro de sintaxe capturado: %v\n", err)
 	}
@@ -483,8 +514,12 @@ func ExampleHealthCheck() {
 	ctx := context.Background()
 	databaseURL := "postgres://user:password@localhost:5432/dbname?sslmode=disable"
 
-	db := Initialize(ctx, databaseURL)
-	defer db.(*sqlx.DB).Close()
+	db, shutdown, err := Initialize(ctx, databaseURL)
+	if err != nil {
+		log.Printf("Erro ao inicializar banco: %v", err)
+		return
+	}
+	defer shutdown(context.Background())
 
 	fmt.Println("=== HEALTH CHECK ===")
 
@@ -526,14 +561,12 @@ func ExampleHealthCheck() {
 		}
 
 		// Adicionar estatísticas do pool
-		if sqlxDB, ok := db.(*sqlx.DB); ok {
-			stats := sqlxDB.Stats()
-			result["pool_stats"] = map[string]interface{}{
-				"open_connections": stats.OpenConnections,
-				"in_use":           stats.InUse,
-				"idle":             stats.Idle,
-				"wait_count":       stats.WaitCount,
-			}
+		stats := db.Stats()
+		result["pool_stats"] = map[string]interface{}{
+			"open_connections": stats.OpenConnections,
+			"in_use":           stats.InUse,
+			"idle":             stats.Idle,
+			"wait_count":       stats.WaitCount,
 		}
 
 		return result
@@ -542,4 +575,35 @@ func ExampleHealthCheck() {
 	// Executar health check detalhado
 	detailedResult := detailedHealthCheck()
 	fmt.Printf("\nHealth check detalhado: %+v\n", detailedResult)
+}
+
+// ExampleGracefulShutdown demonstra o encerramento gracioso do pool de conexões
+// ao receber SIGINT/SIGTERM
+func ExampleGracefulShutdown() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	databaseURL := "postgres://user:password@localhost:5432/dbname?sslmode=disable"
+
+	_, shutdown, err := Initialize(context.Background(), databaseURL)
+	if err != nil {
+		log.Printf("Erro ao inicializar banco: %v", err)
+		return
+	}
+
+	fmt.Println("=== GRACEFUL SHUTDOWN ===")
+	fmt.Println("Aguardando SIGINT/SIGTERM para encerrar...")
+
+	<-ctx.Done()
+	fmt.Println("Sinal recebido, encerrando pool de conexões...")
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := shutdown(shutdownCtx); err != nil {
+		log.Printf("Erro ao encerrar banco de dados: %v", err)
+		return
+	}
+
+	fmt.Println("✓ Pool de conexões encerrado com sucesso")
 }
