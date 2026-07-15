@@ -1,3 +1,3 @@
 module github.com/cgisoftware/initializers/formatter
 
-go 1.25.4
+go 1.26.5
