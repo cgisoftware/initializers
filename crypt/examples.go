@@ -145,7 +145,7 @@ func ExampleCryptManager() {
 	}
 
 	// Criar gerenciador
-	manager := &CryptManager{hybridService: cryptService}
+	manager := NewCryptManager(cryptService)
 
 	// Criptografar senha
 	password := "minhaSenhaSegura123!"
@@ -221,7 +221,7 @@ func ExampleRotationKeyUsage() {
 // ExampleKeyGeneration demonstra como gerar chaves
 func ExampleKeyGeneration() {
 	// Gerar chave AES
-	aesKey, err := generateAESKey()
+	aesKey, err := GenerateAESKey()
 	if err != nil {
 		log.Printf("Erro ao gerar chave AES: %v", err)
 		return

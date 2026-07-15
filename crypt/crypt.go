@@ -28,8 +28,8 @@ type EncryptedPayload struct {
 	Ciphertext   string `json:"ciphertext"`    // Dados criptografados com AES
 }
 
-// Gera uma chave AES de 256 bits
-func generateAESKey() ([]byte, error) {
+// GenerateAESKey gera uma nova chave AES de 256 bits
+func GenerateAESKey() ([]byte, error) {
 	key := make([]byte, AESKeySize)
 	_, err := rand.Read(key)
 	return key, err
@@ -236,7 +236,7 @@ func LoadRSAPublicKeyFromPEM(pemData string) (*rsa.PublicKey, error) {
 
 // Método para criptografar (Híbrido)
 func HybridEncrypt(pub *rsa.PublicKey, data []byte) ([]byte, error) {
-	aesKey, err := generateAESKey()
+	aesKey, err := GenerateAESKey()
 	if err != nil {
 		return nil, err
 	}

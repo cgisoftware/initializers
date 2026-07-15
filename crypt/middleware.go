@@ -143,21 +143,3 @@ func NewDecryptionMiddlewareFromConfig(config DecryptionConfig) (*DecryptionMidd
 func (dm *DecryptionMiddleware) MiddlewareFunc() func(http.Handler) http.Handler {
 	return dm.Middleware
 }
-
-// GinMiddleware retorna um middleware compatível com Gin
-func (dm *DecryptionMiddleware) GinMiddleware() func(c interface{}) {
-	return func(c interface{}) {
-		// Esta função seria implementada especificamente para Gin
-		// Por enquanto, deixamos como placeholder
-		panic("GinMiddleware não implementado - use MiddlewareFunc() com adaptador")
-	}
-}
-
-// EchoMiddleware retorna um middleware compatível com Echo
-func (dm *DecryptionMiddleware) EchoMiddleware() func(next interface{}) interface{} {
-	return func(next interface{}) interface{} {
-		// Esta função seria implementada especificamente para Echo
-		// Por enquanto, deixamos como placeholder
-		panic("EchoMiddleware não implementado - use MiddlewareFunc() com adaptador")
-	}
-}

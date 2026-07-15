@@ -2,13 +2,9 @@ package crypt
 
 import (
 	"context"
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
 	"crypto/rsa"
 	"encoding/base64"
 	"fmt"
-	"io"
 	"strings"
 )
 
@@ -120,6 +116,12 @@ type CryptManager struct {
 	hybridService CryptService
 }
 
+// NewCryptManager cria um CryptManager a partir de um CryptService já
+// inicializado (ver Initialize)
+func NewCryptManager(service CryptService) *CryptManager {
+	return &CryptManager{hybridService: service}
+}
+
 // EncryptPassword criptografa uma senha usando AES (recomendado para senhas)
 func (cm *CryptManager) EncryptPassword(password string) (string, error) {
 	return cm.hybridService.EncryptWithMasterKeySimple(password)
@@ -174,82 +176,39 @@ func (cs *CryptService) HybridDecryptWithKeys(encryptedData string, privateKey *
 	return decrypted, nil
 }
 
+// GenerateToken criptografa data com AES-GCM (autenticado) usando key, no
+// mesmo padrão usado pelo restante do pacote (ver encryptAES em crypt.go).
 func GenerateToken(ctx context.Context, key []byte, data []byte) (string, error) {
-	// Gerar IV aleatório
-	iv := make([]byte, aes.BlockSize)
-	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
-		return "", fmt.Errorf("erro ao gerar IV aleatório: %w", err)
-	}
-
-	// Criar cipher
-	block, err := aes.NewCipher(key)
+	nonce, ciphertext, err := encryptAES(key, data)
 	if err != nil {
-		return "", fmt.Errorf("erro ao criar cipher: %w", err)
+		return "", fmt.Errorf("erro ao criptografar token: %w", err)
 	}
 
-	// CBC mode
-	mode := cipher.NewCBCEncrypter(block, iv)
-
-	// PKCS7 padding
-	padding := aes.BlockSize - len(data)%aes.BlockSize
-	padText := append(data, bytesRepeat(byte(padding), padding)...)
-
-	cipherText := make([]byte, len(padText))
-	mode.CryptBlocks(cipherText, padText)
-
-	return base64.StdEncoding.EncodeToString(cipherText) + "-" + base64.StdEncoding.EncodeToString(iv), nil
+	return base64.StdEncoding.EncodeToString(ciphertext) + "-" + base64.StdEncoding.EncodeToString(nonce), nil
 }
 
+// DecryptToken descriptografa um token gerado por GenerateToken, rejeitando
+// tokens adulterados (falha de autenticação do AES-GCM).
 func DecryptToken(ctx context.Context, key []byte, token string) ([]byte, error) {
 	parts := strings.Split(token, "-")
 	if len(parts) != 2 {
-		return nil, fmt.Errorf("token inválido, formato esperado 'cipher-iv'")
+		return nil, fmt.Errorf("token inválido, formato esperado 'cipher-nonce'")
 	}
 
-	cipherText, err := base64.StdEncoding.DecodeString(parts[0])
+	ciphertext, err := base64.StdEncoding.DecodeString(parts[0])
 	if err != nil {
 		return nil, fmt.Errorf("erro ao decodificar cipherText: %w", err)
 	}
 
-	iv, err := base64.StdEncoding.DecodeString(parts[1])
+	nonce, err := base64.StdEncoding.DecodeString(parts[1])
 	if err != nil {
-		return nil, fmt.Errorf("erro ao decodificar IV: %w", err)
+		return nil, fmt.Errorf("erro ao decodificar nonce: %w", err)
 	}
 
-	block, err := aes.NewCipher(key)
+	plaintext, err := decryptAES(key, nonce, ciphertext)
 	if err != nil {
-		return nil, fmt.Errorf("erro ao criar cipher: %w", err)
+		return nil, fmt.Errorf("erro ao descriptografar token: %w", err)
 	}
 
-	if len(cipherText)%aes.BlockSize != 0 {
-		return nil, fmt.Errorf("tamanho do cipherText inválido")
-	}
-
-	mode := cipher.NewCBCDecrypter(block, iv)
-	plainText := make([]byte, len(cipherText))
-	mode.CryptBlocks(plainText, cipherText)
-
-	if len(plainText) == 0 {
-		return nil, fmt.Errorf("plaintext vazio após descriptografia")
-	}
-	padding := int(plainText[len(plainText)-1])
-	if padding <= 0 || padding > aes.BlockSize || padding > len(plainText) {
-		return nil, fmt.Errorf("padding PKCS7 inválido")
-	}
-	for i := range padding {
-		if plainText[len(plainText)-1-i] != byte(padding) {
-			return nil, fmt.Errorf("padding PKCS7 inconsistente")
-		}
-	}
-
-	return plainText[:len(plainText)-padding], nil
-}
-
-// Função para gerar padding
-func bytesRepeat(b byte, count int) []byte {
-	result := make([]byte, count)
-	for i := range result {
-		result[i] = b
-	}
-	return result
+	return plaintext, nil
 }
