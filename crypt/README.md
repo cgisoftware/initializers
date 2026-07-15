@@ -1,183 +1,64 @@
 # Pacote Crypt
 
-O pacote `crypt` fornece funcionalidades completas de criptografia, incluindo criptografia simétrica (AES), assimétrica (RSA), híbrida e gerenciamento de chaves com rotação.
+O pacote `crypt` fornece funcionalidades de criptografia simétrica (AES-256-GCM),
+assimétrica (RSA), híbrida (RSA + AES) e um middleware HTTP de descriptografia
+automática de campos de requisição.
 
 ## Funcionalidades
 
 ### 🔐 Criptografia AES (Simétrica)
-- Criptografia AES-256-GCM
-- Geração automática de chaves
-- Nonces únicos para cada operação
-- Autenticação integrada (AEAD)
+- AES-256-GCM (autenticado — detecta adulteração do ciphertext)
+- Geração de chaves via `GenerateAESKey`
+- Nonce único gerado para cada operação
 
 ### 🔑 Criptografia RSA (Assimétrica)
-- Suporte a chaves RSA de 2048, 3072 e 4096 bits
-- Criptografia e descriptografia de dados
-- Carregamento de chaves de arquivos PEM
-- **Geração automática de pares de chaves RSA**
-- Exportação de chaves em formato PEM
+- Geração de pares de chaves RSA (mínimo 2048 bits)
+- Carregamento de chaves de arquivos PEM ou de strings PEM
+- Exportação de chaves em formato PEM (PKCS1 para a privada, PKIX para a pública)
 
 ### 🔄 Criptografia Híbrida
-- Combinação de RSA + AES para melhor performance
-- Criptografia de chaves AES com RSA
-- Criptografia de dados com AES
-- **Métodos que aceitam chaves como parâmetros**
-- Ideal para grandes volumes de dados
+- RSA criptografa uma chave AES gerada na hora; AES-GCM criptografa os dados
+- Ideal para dados grandes (evita o limite de tamanho do RSA)
+- Payload serializado em JSON (`EncryptedPayload`) e depois em base64
 
 ### 🛡️ Gerenciamento de Chaves
-- Chaves mestras e de rotação
-- Rotação automática de chaves
-- Versionamento de chaves
-- Armazenamento seguro
+- Chave mestra (`masterKey`) e chave de rotação (`rotationKey`) independentes
+- Carregamento a partir de arquivos hexadecimais (`LoadAESKeyFromPath`)
 
 ### 🏢 Serviços de Alto Nível
-- `CryptService`: Serviço completo com carregamento de chaves
-- `CryptManager`: Gerenciador para senhas e dados sensíveis
-- Configuração via arquivos
+- `CryptService`: serviço completo, inicializado a partir de caminhos de arquivo de chave
+- `CryptManager`: wrapper simplificado para senhas e dados sensíveis
+- `DecryptionMiddleware`: middleware HTTP que descriptografa campos JSON automaticamente
 
 ## Estruturas Principais
 
 ### `EncryptedPayload`
 ```go
 type EncryptedPayload struct {
-    Data      []byte `json:"data"`
-    Nonce     []byte `json:"nonce"`
-    KeyID     string `json:"key_id,omitempty"`
-    Algorithm string `json:"algorithm,omitempty"`
+    EncryptedKey string `json:"encrypted_key"` // AES key criptografada com RSA
+    Nonce        string `json:"nonce"`         // Nonce do AES-GCM
+    Ciphertext   string `json:"ciphertext"`    // Dados criptografados com AES
 }
 ```
-
-Estrutura que encapsula dados criptografados com metadados.
 
 ### `CryptService`
 ```go
 type CryptService struct {
-    publicKey  *rsa.PublicKey
-    privateKey *rsa.PrivateKey
-    masterKey  []byte
+    privateKey  *rsa.PrivateKey
+    publicKey   *rsa.PublicKey
+    masterKey   []byte
     rotationKey []byte
 }
 ```
 
-Serviço principal para operações de criptografia.
-
 ### `CryptManager`
 ```go
 type CryptManager struct {
-    masterKey []byte
+    hybridService CryptService
 }
 ```
 
-Gerenciador simplificado para operações básicas.
-
-## Configuração
-
-### Inicialização do CryptService
-```go
-// Carregamento automático de chaves de arquivos
-service, err := crypt.Initialize()
-if err != nil {
-    log.Fatal("Erro ao inicializar serviço de criptografia:", err)
-}
-
-// O serviço procura pelos arquivos:
-// - private_key.pem (chave privada RSA)
-// - public_key.pem (chave pública RSA)
-// - master.key (chave mestra AES)
-// - rotation.key (chave de rotação AES)
-```
-
-### Inicialização do CryptManager
-```go
-// Com chave mestra específica
-manager := crypt.NewCryptManager(masterKey)
-
-// Com chave gerada automaticamente
-manager := crypt.NewCryptManager(nil) // Gera chave automaticamente
-```
-
-## Criptografia AES
-
-### Operações Básicas
-```go
-// Gerar chave AES
-key, err := crypt.GenerateAESKey()
-if err != nil {
-    log.Fatal(err)
-}
-
-// Criptografar dados
-data := []byte("dados sensíveis")
-encrypted, err := crypt.EncryptAES(data, key)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Descriptografar dados
-decrypted, err := crypt.DecryptAES(encrypted, key)
-if err != nil {
-    log.Fatal(err)
-}
-
-fmt.Printf("Dados originais: %s\n", string(decrypted))
-```
-
-### Usando EncryptedPayload
-```go
-data := []byte("informação confidencial")
-key, _ := crypt.GenerateAESKey()
-
-// Criptografar com payload estruturado
-payload, err := crypt.EncryptAESWithPayload(data, key, "key-001", "AES-256-GCM")
-if err != nil {
-    log.Fatal(err)
-}
-
-// Serializar para JSON
-jsonData, _ := json.Marshal(payload)
-fmt.Printf("Payload criptografado: %s\n", string(jsonData))
-
-// Descriptografar do payload
-decrypted, err := crypt.DecryptAESFromPayload(payload, key)
-if err != nil {
-    log.Fatal(err)
-}
-
-fmt.Printf("Dados descriptografados: %s\n", string(decrypted))
-```
-
-## Criptografia RSA
-
-### Geração de Chaves RSA
-```go
-// Gerar par de chaves RSA com tamanho padrão (2048 bits)
-keyPair, err := crypt.GenerateRSAKeyPairDefault()
-if err != nil {
-    log.Fatal(err)
-}
-
-// Acessar as chaves em formato PEM
-fmt.Println("Chave Privada:")
-fmt.Println(keyPair.PrivateKey)
-
-fmt.Println("Chave Pública:")
-fmt.Println(keyPair.PublicKey)
-
-// Gerar chaves com tamanho personalizado
-keyPair4096, err := crypt.GenerateRSAKeyPair(4096)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Usar com CryptService
-cryptService, _ := crypt.Initialize("private.pem", "public.pem", "master.key", "rotation.key")
-keyPair, err = cryptService.GenerateRSAKeysDefault()
-if err != nil {
-    log.Fatal(err)
-}
-```
-
-### Estrutura RSAKeyPair
+### `RSAKeyPair`
 ```go
 type RSAKeyPair struct {
     PrivateKey string `json:"private_key"` // Chave privada em formato PEM
@@ -185,145 +66,86 @@ type RSAKeyPair struct {
 }
 ```
 
-### Carregamento de Chaves
+## Criptografia AES
+
+### Gerar e usar uma chave AES
 ```go
-// Carregar chave privada
-privateKey, err := crypt.LoadRSAPrivateKeyFromFile("private_key.pem")
+key, err := crypt.GenerateAESKey()
 if err != nil {
     log.Fatal(err)
 }
 
-// Carregar chave pública
-publicKey, err := crypt.LoadRSAPublicKeyFromFile("public_key.pem")
+data := []byte("dados sensíveis")
+
+encrypted, err := crypt.EncryptWithMasterKey(key, data)
+if err != nil {
+    log.Fatal(err)
+}
+
+decrypted, err := crypt.DecryptWithMasterKey(key, encrypted)
+if err != nil {
+    log.Fatal(err)
+}
+
+fmt.Printf("Dados originais: %s\n", string(decrypted))
+```
+
+`EncryptWithRotationKey`/`DecryptWithRotationKey` funcionam da mesma forma,
+usando uma segunda chave dedicada à rotação periódica.
+
+### Carregar chave AES de um arquivo
+```go
+// O arquivo deve conter a chave em hexadecimal (32 bytes = 64 caracteres hex)
+key, err := crypt.LoadAESKeyFromPath("/path/to/master.key")
 if err != nil {
     log.Fatal(err)
 }
 ```
 
-### Criptografia e Descriptografia
+## Criptografia RSA
+
+### Geração de Chaves RSA
 ```go
-data := []byte("dados para criptografar")
-
-// Criptografar com chave pública
-encrypted, err := crypt.EncryptRSA(data, publicKey)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Descriptografar com chave privada
-decrypted, err := crypt.DecryptRSA(encrypted, privateKey)
-if err != nil {
-    log.Fatal(err)
-}
-
-fmt.Printf("Dados descriptografados: %s\n", string(decrypted))
-```
-
-## Criptografia Híbrida
-
-### RSA + AES
-```go
-// Dados grandes para criptografar
-largeData := make([]byte, 1024*1024) // 1MB
-for i := range largeData {
-    largeData[i] = byte(i % 256)
-}
-
-// Criptografia híbrida (RSA + AES)
-encryptedData, encryptedKey, err := crypt.EncryptHybrid(largeData, publicKey)
-if err != nil {
-    log.Fatal(err)
-}
-
-fmt.Printf("Dados criptografados: %d bytes\n", len(encryptedData))
-fmt.Printf("Chave criptografada: %d bytes\n", len(encryptedKey))
-
-// Descriptografia híbrida
-decrypted, err := crypt.DecryptHybrid(encryptedData, encryptedKey, privateKey)
-if err != nil {
-    log.Fatal(err)
-}
-
-fmt.Printf("Dados descriptografados: %d bytes\n", len(decrypted))
-```
-
-## CryptService - Serviço Completo
-
-### Inicialização e Uso
-```go
-// Inicializar serviço
-service, err := crypt.Initialize()
-if err != nil {
-    log.Fatal(err)
-}
-
-// Criptografar com chave mestra
-data := []byte("dados confidenciais")
-encrypted, err := service.EncryptWithMasterKey(data)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Descriptografar com chave mestra
-decrypted, err := service.DecryptWithMasterKey(encrypted)
-if err != nil {
-    log.Fatal(err)
-}
-
-fmt.Printf("Dados: %s\n", string(decrypted))
-```
-
-### Rotação de Chaves
-```go
-// Criptografar com chave de rotação
-encryptedWithRotation, err := service.EncryptWithRotationKey(data)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Descriptografar com chave de rotação
-decryptedFromRotation, err := service.DecryptWithRotationKey(encryptedWithRotation)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Migrar dados da chave mestra para chave de rotação
-migratedData, err := service.MigrateToRotationKey(encrypted)
-if err != nil {
-    log.Fatal(err)
-}
-```
-
-### Criptografia Híbrida com Chaves Fornecidas
-
-#### Funções Globais
-```go
-// Gerar chaves para o exemplo
+// Tamanho padrão (2048 bits)
 keyPair, err := crypt.GenerateRSAKeyPairDefault()
 if err != nil {
     log.Fatal(err)
 }
 
-// Converter chaves PEM para objetos RSA
-publicKey, err := crypt.LoadRSAPublicKeyFromPEM(keyPair.PublicKey)
+// Tamanho customizado (mínimo 2048 bits)
+keyPair4096, err := crypt.GenerateRSAKeyPair(4096)
 if err != nil {
     log.Fatal(err)
 }
 
-privateKey, err := crypt.LoadRSAPrivateKeyFromPEM(keyPair.PrivateKey)
+fmt.Println(keyPair.PrivateKey) // PEM
+fmt.Println(keyPair.PublicKey)  // PEM
+```
+
+### Carregamento de Chaves
+```go
+// De arquivo
+privateKey, err := crypt.LoadRSAPrivateKeyFromPath("private_key.pem")
+publicKey, err := crypt.LoadRSAPublicKeyFromPath("public_key.pem")
+
+// De string PEM (ex.: chave gerada em memória)
+privateKey, err = crypt.LoadRSAPrivateKeyFromPEM(keyPair.PrivateKey)
+publicKey, err = crypt.LoadRSAPublicKeyFromPEM(keyPair.PublicKey)
+```
+
+## Criptografia Híbrida (RSA + AES)
+
+```go
+data := []byte("dados grandes o suficiente para justificar o modo híbrido")
+
+// Criptografar: gera uma chave AES efêmera, criptografa os dados com ela,
+// e criptografa a chave AES com a chave pública RSA
+encrypted, err := crypt.HybridEncrypt(publicKey, data)
 if err != nil {
     log.Fatal(err)
 }
 
-// Criptografar usando chaves fornecidas
-data := "Dados confidenciais"
-encrypted, err := crypt.HybridEncryptWithKeys(data, publicKey)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Descriptografar usando chaves fornecidas
-decrypted, err := crypt.HybridDecryptWithKeys(encrypted, privateKey)
+decrypted, err := crypt.HybridDecrypt(privateKey, encrypted)
 if err != nil {
     log.Fatal(err)
 }
@@ -331,464 +153,179 @@ if err != nil {
 fmt.Printf("Dados descriptografados: %s\n", string(decrypted))
 ```
 
-#### Via CryptService
+### Variante com dados em string + base64 (funções `*WithKeys`)
 ```go
-// Usar métodos do CryptService com chaves específicas
-cryptService := &crypt.CryptService{}
-
-// Criptografar
-encrypted, err := cryptService.HybridEncryptWithKeys(data, publicKey)
+encryptedBase64, err := crypt.HybridEncryptWithKeys("dados confidenciais", publicKey)
 if err != nil {
     log.Fatal(err)
 }
 
-// Descriptografar
-decrypted, err := cryptService.HybridDecryptWithKeys(encrypted, privateKey)
+decrypted, err := crypt.HybridDecryptWithKeys(encryptedBase64, privateKey)
 if err != nil {
     log.Fatal(err)
 }
 ```
 
-### Criptografia Híbrida no Serviço
-```go
-// Criptografia híbrida usando o serviço
-largeData := []byte("dados muito grandes...")
+## Tokens simétricos (`GenerateToken`/`DecryptToken`)
 
-encryptedData, encryptedKey, err := service.EncryptHybridData(largeData)
+Criptografia AES-GCM de propósito geral para gerar tokens opacos (ex.: para
+armazenar um identificador criptografado em cookie ou header). O token é a
+concatenação `base64(ciphertext) + "-" + base64(nonce)`.
+
+```go
+ctx := context.Background()
+key, _ := crypt.GenerateAESKey()
+
+token, err := crypt.GenerateToken(ctx, key, []byte("payload"))
 if err != nil {
     log.Fatal(err)
 }
 
-// Descriptografia híbrida
-decrypted, err := service.DecryptHybridData(encryptedData, encryptedKey)
+payload, err := crypt.DecryptToken(ctx, key, token)
+if err != nil {
+    log.Fatal(err) // também falha se o token foi adulterado (falha de autenticação do GCM)
+}
+```
+
+## CryptService — Serviço Completo
+
+### Inicialização
+```go
+service, err := crypt.Initialize(
+    "private_key.pem",  // chave privada RSA
+    "public_key.pem",   // chave pública RSA
+    "master.key",        // chave AES mestra (hex)
+    "rotation.key",       // chave AES de rotação (hex)
+)
 if err != nil {
     log.Fatal(err)
 }
 ```
 
-## CryptManager - Gerenciamento Simplificado
+Todos os quatro caminhos são obrigatórios — `Initialize` retorna erro se
+qualquer um estiver vazio ou se o arquivo correspondente não puder ser lido.
 
-### Operações com Senhas
+### Métodos disponíveis
 ```go
-manager := crypt.NewCryptManager(nil) // Chave gerada automaticamente
+// Híbrida (RSA + AES), usando as chaves carregadas no serviço
+encrypted, err := service.EncryptData("dados confidenciais")
+decrypted, err := service.DecryptData(encrypted)
 
-// Criptografar senha
-password := "minha-senha-secreta"
-encryptedPassword, err := manager.EncryptPassword(password)
+// Simétrica com a chave mestra
+encrypted, err = service.EncryptWithMasterKeySimple("dados sensíveis")
+decrypted, err = service.DecryptWithMasterKeySimple(encrypted)
+
+// Geração de chaves RSA a partir do serviço
+keyPair, err := service.GenerateRSAKeysDefault()
+keyPair4096, err := service.GenerateRSAKeys(4096)
+
+// Híbrida com chaves fornecidas explicitamente (não as do serviço)
+encrypted, err = service.HybridEncryptWithKeys("dados", outraChavePublica)
+decrypted, err = service.HybridDecryptWithKeys(encrypted, outraChavePrivada)
+```
+
+## CryptManager — Gerenciamento Simplificado
+
+```go
+service, err := crypt.Initialize(privateKeyPath, publicKeyPath, masterKeyPath, rotationKeyPath)
 if err != nil {
     log.Fatal(err)
 }
 
-// Descriptografar senha
+manager := crypt.NewCryptManager(service)
+
+// Senhas (usa a chave mestra AES)
+encryptedPassword, err := manager.EncryptPassword("minha-senha-secreta")
 decryptedPassword, err := manager.DecryptPassword(encryptedPassword)
+
+// Dados sensíveis (usa criptografia híbrida)
+encryptedInfo, err := manager.EncryptSensitiveData("CPF: 123.456.789-00")
+decryptedInfo, err := manager.DecryptSensitiveData(encryptedInfo)
+```
+
+## Middleware de Descriptografia HTTP
+
+`DecryptionMiddleware` intercepta requisições `POST`/`PUT`/`PATCH` com
+`Content-Type: application/json` e descriptografa automaticamente os campos
+configurados antes de repassar ao próximo handler.
+
+```go
+cryptService, err := crypt.Initialize(privateKeyPath, publicKeyPath, masterKeyPath, rotationKeyPath)
 if err != nil {
     log.Fatal(err)
 }
 
-fmt.Printf("Senha original: %s\n", decryptedPassword)
+dm := crypt.NewDecryptionMiddleware(&cryptService, []string{"password", "ssn"}, "hybrid") // ou "aes"
+
+mux := http.NewServeMux()
+mux.HandleFunc("/users", createUserHandler)
+
+handler := dm.MiddlewareFunc()(mux)
+http.ListenAndServe(":8080", handler)
 ```
 
-### Operações com Dados Sensíveis
+Ou a partir de uma configuração:
 ```go
-// Criptografar dados sensíveis
-sensitiveData := map[string]interface{}{
-    "ssn": "123-45-6789",
-    "credit_card": "4111-1111-1111-1111",
-    "bank_account": "987654321",
-}
-
-jsonData, _ := json.Marshal(sensitiveData)
-encryptedData, err := manager.EncryptSensitiveData(jsonData)
-if err != nil {
-    log.Fatal(err)
-}
-
-// Descriptografar dados sensíveis
-decryptedData, err := manager.DecryptSensitiveData(encryptedData)
-if err != nil {
-    log.Fatal(err)
-}
-
-var originalData map[string]interface{}
-json.Unmarshal(decryptedData, &originalData)
-fmt.Printf("Dados originais: %+v\n", originalData)
+dm, err := crypt.NewDecryptionMiddlewareFromConfig(crypt.DecryptionConfig{
+    EncryptedFields:    []string{"password", "ssn"},
+    DecryptionType:     "hybrid",
+    RSAPrivateKeyPath:  privateKeyPath,
+    RSAPublicKeyPath:   publicKeyPath,
+    AESMasterKeyPath:   masterKeyPath,
+    AESRotationKeyPath: rotationKeyPath,
+})
 ```
 
-## Exemplos Avançados
-
-### Sistema de Backup Criptografado
-```go
-package main
-
-import (
-    "encoding/json"
-    "fmt"
-    "time"
-    "seu-projeto/initializers/crypt"
-)
-
-type BackupData struct {
-    Timestamp time.Time `json:"timestamp"`
-    UserData  []User    `json:"user_data"`
-    Settings  map[string]interface{} `json:"settings"`
-}
-
-type User struct {
-    ID       string `json:"id"`
-    Email    string `json:"email"`
-    Password string `json:"password"` // Será criptografado
-    SSN      string `json:"ssn"`      // Será criptografado
-}
-
-func createEncryptedBackup() {
-    service, err := crypt.Initialize()
-    if err != nil {
-        panic(err)
-    }
-    
-    // Dados do backup
-    backup := BackupData{
-        Timestamp: time.Now(),
-        UserData: []User{
-            {
-                ID:       "1",
-                Email:    "user1@example.com",
-                Password: "senha123",
-                SSN:      "123-45-6789",
-            },
-            {
-                ID:       "2",
-                Email:    "user2@example.com",
-                Password: "outrasenha",
-                SSN:      "987-65-4321",
-            },
-        },
-        Settings: map[string]interface{}{
-            "app_version": "1.0.0",
-            "db_version":  "2.1.0",
-        },
-    }
-    
-    // Criptografar dados sensíveis
-    for i := range backup.UserData {
-        // Criptografar senha
-        encryptedPassword, err := service.EncryptWithMasterKey([]byte(backup.UserData[i].Password))
-        if err != nil {
-            panic(err)
-        }
-        backup.UserData[i].Password = string(encryptedPassword)
-        
-        // Criptografar SSN
-        encryptedSSN, err := service.EncryptWithMasterKey([]byte(backup.UserData[i].SSN))
-        if err != nil {
-            panic(err)
-        }
-        backup.UserData[i].SSN = string(encryptedSSN)
-    }
-    
-    // Serializar backup
-    backupJSON, err := json.Marshal(backup)
-    if err != nil {
-        panic(err)
-    }
-    
-    // Criptografar backup completo com criptografia híbrida
-    encryptedData, encryptedKey, err := service.EncryptHybridData(backupJSON)
-    if err != nil {
-        panic(err)
-    }
-    
-    fmt.Printf("Backup criptografado criado:\n")
-    fmt.Printf("- Dados: %d bytes\n", len(encryptedData))
-    fmt.Printf("- Chave: %d bytes\n", len(encryptedKey))
-    
-    // Salvar em arquivos
-    // saveToFile("backup.dat", encryptedData)
-    // saveToFile("backup.key", encryptedKey)
-}
-```
-
-### Middleware de Criptografia para APIs
-```go
-package middleware
-
-import (
-    "bytes"
-    "encoding/json"
-    "io"
-    "github.com/gin-gonic/gin"
-    "seu-projeto/initializers/crypt"
-)
-
-// CryptMiddleware criptografa automaticamente campos sensíveis
-func CryptMiddleware(service *crypt.CryptService, sensitiveFields []string) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        // Interceptar request body
-        if c.Request.Method == "POST" || c.Request.Method == "PUT" {
-            body, err := io.ReadAll(c.Request.Body)
-            if err != nil {
-                c.JSON(500, gin.H{"error": "Erro ao ler request"})
-                c.Abort()
-                return
-            }
-            
-            // Parse JSON
-            var data map[string]interface{}
-            if err := json.Unmarshal(body, &data); err == nil {
-                // Criptografar campos sensíveis
-                for _, field := range sensitiveFields {
-                    if value, exists := data[field]; exists {
-                        if strValue, ok := value.(string); ok {
-                            encrypted, err := service.EncryptWithMasterKey([]byte(strValue))
-                            if err == nil {
-                                data[field] = string(encrypted)
-                            }
-                        }
-                    }
-                }
-                
-                // Recriar request body
-                newBody, _ := json.Marshal(data)
-                c.Request.Body = io.NopCloser(bytes.NewReader(newBody))
-                c.Request.ContentLength = int64(len(newBody))
-            } else {
-                // Restaurar body original se não for JSON
-                c.Request.Body = io.NopCloser(bytes.NewReader(body))
-            }
-        }
-        
-        c.Next()
-    }
-}
-
-// Uso
-func setupRoutes() {
-    service, _ := crypt.Initialize()
-    
-    r := gin.Default()
-    
-    // Aplicar middleware para criptografar campos sensíveis
-    sensitiveFields := []string{"password", "ssn", "credit_card", "bank_account"}
-    r.Use(CryptMiddleware(service, sensitiveFields))
-    
-    r.POST("/users", createUser)
-    r.PUT("/users/:id", updateUser)
-    
-    r.Run(":8080")
-}
-```
+`MiddlewareFunc()` retorna um `func(http.Handler) http.Handler` padrão da
+biblioteca `net/http`, compatível com qualquer roteador que aceite esse tipo
+(chi, gorilla/mux, ou como adaptador manual em Gin/Echo).
 
 ## Segurança
 
 ### Boas Práticas
 
 1. **Gerenciamento de Chaves**
-   ```go
-   // ❌ Não hardcode chaves
-   key := []byte("minha-chave-123")
-   
-   // ✅ Use variáveis de ambiente ou arquivos seguros
-   keyPath := os.Getenv("MASTER_KEY_PATH")
-   key, err := crypt.LoadAESKeyFromFile(keyPath)
-   ```
+   - Nunca hardcode chaves no código-fonte.
+   - Armazene os arquivos de chave (`master.key`, `rotation.key`, `*.pem`) fora
+     do controle de versão, com permissões restritivas.
+     ```bash
+     chmod 600 private_key.pem master.key rotation.key
+     chmod 644 public_key.pem
+     ```
+   - Implemente rotação periódica migrando dados criptografados com
+     `EncryptWithRotationKey`/`DecryptWithRotationKey` conforme a política da
+     aplicação.
 
-2. **Rotação de Chaves**
-   ```go
-   // Implementar rotação periódica
-   func rotateKeys(service *crypt.CryptService) {
-       // Gerar nova chave de rotação
-       newKey, err := crypt.GenerateAESKey()
-       if err != nil {
-           log.Fatal(err)
-       }
-       
-       // Salvar nova chave
-       err = crypt.SaveAESKeyToFile(newKey, "new_rotation.key")
-       if err != nil {
-           log.Fatal(err)
-       }
-       
-       // Migrar dados existentes
-       // ... lógica de migração
-   }
-   ```
+2. **Criptografia**
+   - Use AES-256-GCM (já é o padrão de todas as funções simétricas do pacote)
+     — nunca reintroduza um modo não autenticado (CBC/CTR sem MAC).
+   - Use RSA de 2048 bits ou mais (`GenerateRSAKeyPair` já rejeita tamanhos
+     menores).
+   - Para dados grandes, prefira sempre a criptografia híbrida
+     (`HybridEncrypt`) em vez de RSA puro.
 
-3. **Validação de Integridade**
-   ```go
-   func validateEncryptedData(payload *crypt.EncryptedPayload) error {
-       if len(payload.Data) == 0 {
-           return errors.New("dados criptografados vazios")
-       }
-       
-       if len(payload.Nonce) != 12 { // GCM nonce size
-           return errors.New("nonce inválido")
-       }
-       
-       if payload.Algorithm != "AES-256-GCM" {
-           return errors.New("algoritmo não suportado")
-       }
-       
-       return nil
-   }
-   ```
-
-4. **Limpeza de Memória**
-   ```go
-   func secureCleanup(sensitiveData []byte) {
-       // Sobrescrever dados sensíveis na memória
-       for i := range sensitiveData {
-           sensitiveData[i] = 0
-       }
-   }
-   
-   // Uso
-   password := []byte("senha-secreta")
-   defer secureCleanup(password)
-   
-   // ... usar password
-   ```
-
-### Configuração de Arquivos
-
-#### Estrutura de Diretórios
-```
-project/
-├── keys/
-│   ├── private_key.pem     # Chave privada RSA
-│   ├── public_key.pem      # Chave pública RSA
-│   ├── master.key          # Chave mestra AES
-│   └── rotation.key        # Chave de rotação AES
-└── config/
-    └── crypt.yaml          # Configurações
-```
-
-#### Permissões de Arquivos
-```bash
-# Definir permissões restritivas
-chmod 600 keys/private_key.pem
-chmod 600 keys/master.key
-chmod 600 keys/rotation.key
-chmod 644 keys/public_key.pem
-
-# Proprietário apenas para diretório
-chmod 700 keys/
-```
-
-## Performance
-
-### Benchmarks Típicos
-
-- **AES-256-GCM**: ~500 MB/s para criptografia/descriptografia
-- **RSA-2048**: ~1000 operações/s para criptografia, ~100 operações/s para descriptografia
-- **Híbrida**: Performance próxima ao AES para dados grandes
-
-### Otimizações
-
-1. **Pool de Chaves**
-   ```go
-   type KeyPool struct {
-       keys [][]byte
-       index int
-       mutex sync.RWMutex
-   }
-   
-   func (p *KeyPool) GetKey() []byte {
-       p.mutex.RLock()
-       defer p.mutex.RUnlock()
-       
-       key := p.keys[p.index]
-       p.index = (p.index + 1) % len(p.keys)
-       return key
-   }
-   ```
-
-2. **Cache de Chaves RSA**
-   ```go
-   var (
-       rsaKeyCache = make(map[string]*rsa.PrivateKey)
-       cacheMutex  sync.RWMutex
-   )
-   
-   func getCachedRSAKey(keyPath string) (*rsa.PrivateKey, error) {
-       cacheMutex.RLock()
-       if key, exists := rsaKeyCache[keyPath]; exists {
-           cacheMutex.RUnlock()
-           return key, nil
-       }
-       cacheMutex.RUnlock()
-       
-       // Carregar e cachear chave
-       key, err := crypt.LoadRSAPrivateKeyFromFile(keyPath)
-       if err != nil {
-           return nil, err
-       }
-       
-       cacheMutex.Lock()
-       rsaKeyCache[keyPath] = key
-       cacheMutex.Unlock()
-       
-       return key, nil
-   }
-   ```
+3. **Tratamento de Erros**
+   - Nunca logue o conteúdo de chaves ou de dados descriptografados.
+   - Trate falhas de descriptografia (`DecryptWithMasterKey`,
+     `DecryptToken`, etc.) como possível tentativa de adulteração — o AES-GCM
+     rejeita ciphertexts modificados automaticamente.
 
 ## Testes
 
-### Testes Unitários
-```go
-package crypt_test
+O pacote tem testes unitários (`crypt_test.go`, `crypt_service_test.go`)
+cobrindo round-trip de todas as primitivas (AES, RSA, híbrida, token) e
+rejeição de ciphertexts/tokens adulterados. Rode com:
 
-import (
-    "testing"
-    "seu-projeto/initializers/crypt"
-)
-
-func TestAESEncryptionDecryption(t *testing.T) {
-    key, err := crypt.GenerateAESKey()
-    if err != nil {
-        t.Fatal(err)
-    }
-    
-    originalData := []byte("dados de teste")
-    
-    // Criptografar
-    encrypted, err := crypt.EncryptAES(originalData, key)
-    if err != nil {
-        t.Fatal(err)
-    }
-    
-    // Descriptografar
-    decrypted, err := crypt.DecryptAES(encrypted, key)
-    if err != nil {
-        t.Fatal(err)
-    }
-    
-    if string(decrypted) != string(originalData) {
-        t.Errorf("Dados não coincidem. Original: %s, Descriptografado: %s", 
-                 string(originalData), string(decrypted))
-    }
-}
-
-func BenchmarkAESEncryption(b *testing.B) {
-    key, _ := crypt.GenerateAESKey()
-    data := make([]byte, 1024) // 1KB
-    
-    b.ResetTimer()
-    for i := 0; i < b.N; i++ {
-        _, err := crypt.EncryptAES(data, key)
-        if err != nil {
-            b.Fatal(err)
-        }
-    }
-}
+```bash
+go test ./...
 ```
 
 ## Dependências
 
-- `crypto/aes` - Criptografia AES
-- `crypto/rsa` - Criptografia RSA
-- `crypto/rand` - Geração de números aleatórios
-- `crypto/cipher` - Modos de operação de cifra
-- `encoding/pem` - Codificação PEM para chaves
+- `crypto/aes`, `crypto/cipher` — AES-GCM
+- `crypto/rsa` — RSA e OAEP
+- `crypto/rand` — geração de números aleatórios
+- `crypto/x509`, `encoding/pem` — serialização de chaves
 
 ## Veja Também
 
@@ -798,4 +335,6 @@ func BenchmarkAESEncryption(b *testing.B) {
 
 ---
 
-**Nota**: Este pacote implementa algoritmos criptográficos padrão da indústria. Sempre mantenha as chaves seguras e implemente rotação regular em ambientes de produção.
+**Nota**: Este pacote implementa algoritmos criptográficos padrão da indústria.
+Sempre mantenha as chaves seguras e implemente rotação regular em ambientes de
+produção.
