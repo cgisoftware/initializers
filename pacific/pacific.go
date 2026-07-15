@@ -103,6 +103,9 @@ type LogErroAppElement struct {
 }
 
 func (log LogErroApp) IsErr() bool {
+	if len(log.LogErroApp) == 0 {
+		return false
+	}
 	return log.LogErroApp[0].Erro != ""
 }
 
