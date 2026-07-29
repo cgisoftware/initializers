@@ -89,6 +89,9 @@ func (repository *pacificHttpRepository) Send(ctx context.Context, url string, i
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	for key, value := range input.Headers {
+		req.Header.Set(key, value)
+	}
 
 	start := time.Now()
 	logger.DebugContext(ctx, "pacific: enviando requisição")

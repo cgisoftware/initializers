@@ -9,6 +9,11 @@ type PacificInput struct {
 	PWD    string  `json:"pwd"`
 	PtoP   string  `json:"ptoP"`
 	Params []Param `json:"params"`
+
+	// Headers são propagados como headers HTTP na chamada ao Pacific (ex:
+	// Authorization com o JWT do usuário para clientes migrados). Nunca vai
+	// no corpo da requisição.
+	Headers map[string]string `json:"-"`
 }
 
 type Param struct {
