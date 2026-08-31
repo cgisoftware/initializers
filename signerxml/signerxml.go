@@ -240,6 +240,147 @@ func (a signerXml) extractPfxCertificateOpenSSL(cert types.A1) (crypto.PrivateKe
 	return privateKey, certificate, nil
 }
 
+// orderChainWithLeafFirst reorders certificates so the one whose public key matches the
+// private key (the leaf) comes first, followed by the remaining certificates (typically
+// intermediate CAs) in the order they were found. If the leaf can't be identified, the
+// original order is returned unchanged.
+func orderChainWithLeafFirst(privateKey crypto.PrivateKey, certificates []*x509.Certificate) []*x509.Certificate {
+	signer, ok := privateKey.(crypto.Signer)
+	if !ok || len(certificates) == 0 {
+		return certificates
+	}
+	pub := signer.Public()
+
+	leafIndex := -1
+	for i, c := range certificates {
+		if equaler, ok := c.PublicKey.(interface{ Equal(crypto.PublicKey) bool }); ok && equaler.Equal(pub) {
+			leafIndex = i
+			break
+		}
+	}
+	if leafIndex <= 0 {
+		return certificates
+	}
+
+	ordered := make([]*x509.Certificate, 0, len(certificates))
+	ordered = append(ordered, certificates[leafIndex])
+	for i, c := range certificates {
+		if i != leafIndex {
+			ordered = append(ordered, c)
+		}
+	}
+	return ordered
+}
+
+// extractPfxCertificateChain is like extractPfxCertificate but returns the full certificate
+// chain found in the PFX (leaf certificate first, followed by intermediate CAs), needed for
+// servers that validate the complete mTLS chain during the handshake (e.g. a WAF that sends a
+// CertificateRequest with a restrictive CA list).
+func (a signerXml) extractPfxCertificateChain(cert types.A1) (crypto.PrivateKey, []*x509.Certificate, error) {
+	blocks, err := pkcs12.ToPEM(cert.File, cert.Password)
+	if err != nil {
+		if strings.Contains(err.Error(), "indefinite length found") {
+			return a.extractPfxCertificateChainOpenSSL(cert)
+		}
+		return nil, nil, fmt.Errorf("error decoding PFX: %w", err)
+	}
+
+	var privateKey crypto.PrivateKey
+	var certificates []*x509.Certificate
+
+	for _, block := range blocks {
+		switch block.Type {
+		case "CERTIFICATE":
+			if c, err := x509.ParseCertificate(block.Bytes); err == nil {
+				certificates = append(certificates, c)
+			}
+		case "PRIVATE KEY", "RSA PRIVATE KEY":
+			if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+				privateKey = k
+			} else if k, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+				privateKey = k
+			}
+		}
+	}
+
+	if privateKey == nil {
+		return nil, nil, errors.New("private key not found in PFX file")
+	}
+	if len(certificates) == 0 {
+		return nil, nil, errors.New("certificate not found in PFX file")
+	}
+
+	return privateKey, orderChainWithLeafFirst(privateKey, certificates), nil
+}
+
+func (a signerXml) extractPfxCertificateChainOpenSSL(cert types.A1) (crypto.PrivateKey, []*x509.Certificate, error) {
+	// Create a temporary file for the PFX
+	tmpFile, err := os.CreateTemp("", "cert-*.pfx")
+	if err != nil {
+		return nil, nil, fmt.Errorf("error creating temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.Write(cert.File); err != nil {
+		return nil, nil, fmt.Errorf("error writing to temp file: %w", err)
+	}
+	tmpFile.Close()
+
+	// Use OpenSSL to convert PFX to PEM
+	cmd := exec.Command("openssl", "pkcs12", "-in", tmpFile.Name(), "-nodes", "-passin", "pass:"+cert.Password)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		// Check for OpenSSL 3.0 legacy algorithm error (RC2-40-CBC, etc.)
+		if strings.Contains(string(output), "unsupported") || strings.Contains(string(output), "error:0308010C") {
+			// Retry with -legacy flag
+			cmd = exec.Command("openssl", "pkcs12", "-legacy", "-in", tmpFile.Name(), "-nodes", "-passin", "pass:"+cert.Password)
+			var errLegacy error
+			output, errLegacy = cmd.CombinedOutput()
+			if errLegacy != nil {
+				return nil, nil, fmt.Errorf("error executing openssl (with legacy): %v, output: %s", errLegacy, string(output))
+			}
+		} else {
+			return nil, nil, fmt.Errorf("error executing openssl: %v, output: %s", err, string(output))
+		}
+	}
+
+	// Parse the PEM output
+	var privateKey crypto.PrivateKey
+	var certificates []*x509.Certificate
+
+	var block *pem.Block
+	rest := output
+	for {
+		block, rest = pem.Decode(rest)
+		if block == nil {
+			break
+		}
+
+		if block.Type == "CERTIFICATE" {
+			c, err := x509.ParseCertificate(block.Bytes)
+			if err != nil {
+				continue
+			}
+			certificates = append(certificates, c)
+		} else if block.Type == "PRIVATE KEY" || block.Type == "RSA PRIVATE KEY" {
+			if k, err := x509.ParsePKCS1PrivateKey(block.Bytes); err == nil {
+				privateKey = k
+			} else if k, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+				privateKey = k
+			}
+		}
+	}
+
+	if privateKey == nil {
+		return nil, nil, errors.New("private key not found in PFX file (OpenSSL)")
+	}
+	if len(certificates) == 0 {
+		return nil, nil, errors.New("certificate not found in PFX file (OpenSSL)")
+	}
+
+	return privateKey, orderChainWithLeafFirst(privateKey, certificates), nil
+}
+
 // validateCertificate validates if the certificate is valid
 func (a signerXml) validateCertificate(cert *x509.Certificate) error {
 	now := time.Now()
@@ -485,6 +626,27 @@ func (a signerXml) ReadPFXCertificateFromBytes(certificadoBytes []byte, senha st
 	}
 
 	return privateKey, cert1, nil
+}
+
+// ReadPFXCertificateChainFromBytes is like ReadPFXCertificateFromBytes but also returns the
+// full certificate chain (leaf certificate first, followed by intermediate CAs) found in the
+// PFX — needed for servers/WAFs that require the complete mTLS chain during the TLS handshake.
+func (a signerXml) ReadPFXCertificateChainFromBytes(certificadoBytes []byte, senha string) (crypto.PrivateKey, []*x509.Certificate, error) {
+	cert := types.A1{
+		File:     certificadoBytes,
+		Password: senha,
+	}
+
+	privateKey, chain, err := a.extractPfxCertificateChain(cert)
+	if err != nil {
+		return nil, nil, fmt.Errorf("error extracting PFX certificate chain: %v", err)
+	}
+
+	if err := a.validateCertificate(chain[0]); err != nil {
+		return nil, nil, fmt.Errorf("error validating certificate: %v", err)
+	}
+
+	return privateKey, chain, nil
 }
 
 func cleanXML(xmlContent string) string {
